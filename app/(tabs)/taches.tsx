@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, {
   useSharedValue,
@@ -44,6 +45,13 @@ interface SavedTask {
   title: string;
   priority: Priority;
   categories: string[];
+}
+
+interface TaskBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -162,11 +170,11 @@ interface RowProps {
   task: DayTask;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
-  onLongPress: (task: DayTask, y: number) => void;
-  selected?: boolean;
+  onLongPress: (task: DayTask, bounds: TaskBounds) => void;
 }
 
-function SwipeableTaskRow({ task, onToggle, onDelete, onLongPress, selected }: RowProps) {
+function SwipeableTaskRow({ task, onToggle, onDelete, onLongPress }: RowProps) {
+  const containerRef = useRef<View>(null);
   const x = useSharedValue(0);
 
   const pan = Gesture.Pan()
@@ -180,9 +188,15 @@ function SwipeableTaskRow({ task, onToggle, onDelete, onLongPress, selected }: R
       x.value = withSpring(open ? -DELETE_W : 0, SPRING);
     });
 
+  const measureAndOpen = () => {
+    containerRef.current?.measureInWindow((mx, my, mw, mh) => {
+      onLongPress(task, { x: mx, y: my, width: mw, height: mh });
+    });
+  };
+
   const longPress = Gesture.LongPress()
     .minDuration(400)
-    .onStart(e => { runOnJS(onLongPress)(task, e.absoluteY); });
+    .onStart(() => { runOnJS(measureAndOpen)(); });
 
   const combined = Gesture.Race(pan, longPress);
 
@@ -201,13 +215,13 @@ function SwipeableTaskRow({ task, onToggle, onDelete, onLongPress, selected }: R
 
   return (
     <GestureDetector gesture={combined}>
-      <View style={styles.swipeContainer}>
+      <View ref={containerRef} style={styles.swipeContainer}>
         <View style={styles.deleteZone}>
           <TouchableOpacity style={styles.deleteInner} onPress={() => onDelete(task.id)} activeOpacity={0.85}>
             <Animated.Text style={[styles.deleteText, textStyle]}>Supprimer</Animated.Text>
           </TouchableOpacity>
         </View>
-        <Animated.View style={[styles.taskRowWrap, rowStyle, selected && styles.taskRowSelected]}>
+        <Animated.View style={[styles.taskRowWrap, rowStyle]}>
           <TouchableOpacity style={styles.taskRow} onPress={handleRowPress} activeOpacity={0.7}>
             <View style={[styles.checkbox, task.completed && styles.checkboxDone]}>
               {task.completed && <Text style={styles.checkmark}>✓</Text>}
@@ -228,6 +242,40 @@ function SwipeableTaskRow({ task, onToggle, onDelete, onLongPress, selected }: R
         </Animated.View>
       </View>
     </GestureDetector>
+  );
+}
+
+// ─── SavedTaskRow ─────────────────────────────────────────────────────────────
+
+interface SavedRowProps {
+  saved: SavedTask;
+  onAdd: (s: SavedTask) => void;
+  onLongPress: (s: SavedTask, bounds: TaskBounds) => void;
+}
+
+function SavedTaskRow({ saved, onAdd, onLongPress }: SavedRowProps) {
+  const rowRef = useRef<View>(null);
+
+  const handleLongPress = () => {
+    rowRef.current?.measureInWindow((mx, my, mw, mh) => {
+      onLongPress(saved, { x: mx, y: my, width: mw, height: mh });
+    });
+  };
+
+  return (
+    <Pressable
+      ref={rowRef}
+      style={styles.savedRow}
+      onLongPress={handleLongPress}
+      delayLongPress={400}>
+      <Text style={styles.savedTaskTitle} numberOfLines={1}>{saved.title}</Text>
+      <TouchableOpacity
+        style={styles.addToDayBtn}
+        onPress={() => onAdd(saved)}
+        activeOpacity={0.75}>
+        <Text style={styles.addToDayIcon}>+</Text>
+      </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -252,8 +300,12 @@ export default function TachesScreen() {
   const [deadlineEnabled, setDeadlineEnabled] = useState(false);
   const [deadlineTime, setDeadlineTime] = useState('');
 
-  // ── Context menu ──
-  const [ctxMenu, setCtxMenu] = useState<{ type: 'day' | 'saved'; task: DayTask | SavedTask; top: number } | null>(null);
+  // ── Context overlay (Instagram-style) ──
+  const [ctx, setCtx] = useState<{
+    type: 'day' | 'saved';
+    task: DayTask | SavedTask;
+    bounds: TaskBounds;
+  } | null>(null);
 
   // ── Edit day task modal ──
   const [editDayModal, setEditDayModal] = useState(false);
@@ -346,37 +398,39 @@ export default function TachesScreen() {
     ]);
   };
 
-  // ── Context menu animation ──
-  const ctxFade = useSharedValue(0);
-  const ctxRise = useSharedValue(10);
-  const ctxCardStyle = useAnimatedStyle(() => ({
-    opacity: ctxFade.value,
-    transform: [{ translateY: ctxRise.value }],
+  // ── Context overlay animations ──
+  const blurOpacity  = useSharedValue(0);
+  const liftY        = useSharedValue(0);
+  const menuOpacity  = useSharedValue(0);
+  const menuY        = useSharedValue(10);
+
+  const blurStyle  = useAnimatedStyle(() => ({ opacity: blurOpacity.value }));
+  const liftStyle  = useAnimatedStyle(() => ({ transform: [{ translateY: liftY.value }] }));
+  const menuStyle  = useAnimatedStyle(() => ({
+    opacity: menuOpacity.value,
+    transform: [{ translateY: menuY.value }],
   }));
 
-  // ── Context menu handlers ──
-  const openCtxMenu = (type: 'day' | 'saved', task: DayTask | SavedTask, pressY: number) => {
-    const cardH = type === 'day' ? 56 : 116;
-    const showBelow = pressY + cardH + 24 < SCREEN_H - 80;
-    const top = showBelow
-      ? Math.min(pressY + 12, SCREEN_H - cardH - 60)
-      : Math.max(pressY - cardH - 12, 60);
-    ctxFade.value = 0;
-    ctxRise.value = showBelow ? 10 : -10;
-    setCtxMenu({ type, task, top });
-    ctxFade.value = withTiming(1, { duration: 180 });
-    ctxRise.value = withTiming(0, { duration: 220 });
+  const openCtx = (type: 'day' | 'saved', task: DayTask | SavedTask, bounds: TaskBounds) => {
+    blurOpacity.value = 0; liftY.value = 0; menuOpacity.value = 0; menuY.value = 10;
+    setCtx({ type, task, bounds });
+    blurOpacity.value = withTiming(1, { duration: 260 });
+    liftY.value       = withSpring(-10, { damping: 16, stiffness: 200 });
+    menuOpacity.value = withTiming(1, { duration: 220 });
+    menuY.value       = withTiming(0,  { duration: 240 });
   };
 
-  const closeCtxMenu = () => {
-    ctxFade.value = withTiming(0, { duration: 160 }, (finished) => {
-      if (finished) runOnJS(setCtxMenu)(null);
+  const closeCtx = () => {
+    blurOpacity.value = withTiming(0, { duration: 200 });
+    liftY.value       = withTiming(0, { duration: 180 });
+    menuOpacity.value = withTiming(0, { duration: 160 }, (finished) => {
+      if (finished) runOnJS(setCtx)(null);
     });
   };
 
   const handleCtxEdit = () => {
-    if (!ctxMenu) return;
-    const { type, task } = ctxMenu;
+    if (!ctx) return;
+    const { type, task } = ctx;
     if (type === 'day') {
       const t = task as DayTask;
       setEditDayId(t.id); setEditDayTitle(t.title); setEditDayPriority(t.priority);
@@ -386,20 +440,31 @@ export default function TachesScreen() {
       setEditSavedCatEnabled(t.categories.length > 0); setEditSavedCats(t.categories);
       setEditCreatingCat(false); setEditNewCatName('');
     }
-    ctxFade.value = 0;
-    setCtxMenu(null);
-    if (type === 'day') setEditDayModal(true);
-    else setEditSavedModal(true);
+    blurOpacity.value = withTiming(0, { duration: 200 });
+    liftY.value       = withTiming(0, { duration: 180 });
+    menuOpacity.value = withTiming(0, { duration: 160 }, (finished) => {
+      if (finished) {
+        runOnJS(setCtx)(null);
+        if (type === 'day') runOnJS(setEditDayModal)(true);
+        else runOnJS(setEditSavedModal)(true);
+      }
+    });
   };
 
   const handleCtxDelete = () => {
-    if (!ctxMenu || ctxMenu.type !== 'saved') return;
-    const taskId = ctxMenu.task.id;
-    ctxFade.value = 0;
-    setCtxMenu(null);
-    persistSavedTasks(savedTasks.filter(t => t.id !== taskId));
+    if (!ctx || ctx.type !== 'saved') return;
+    const taskId = ctx.task.id;
+    blurOpacity.value = withTiming(0, { duration: 180 });
+    liftY.value       = withTiming(0, { duration: 160 });
+    menuOpacity.value = withTiming(0, { duration: 140 }, (finished) => {
+      if (finished) {
+        runOnJS(setCtx)(null);
+        runOnJS(persistSavedTasks)(savedTasks.filter(t => t.id !== taskId));
+      }
+    });
   };
 
+  // ── Edit handlers ──
   const confirmEditDay = () => {
     const trimmed = editDayTitle.trim();
     if (!trimmed) return;
@@ -464,7 +529,6 @@ export default function TachesScreen() {
 
   // ── Grouped saved tasks ──
   const groups = buildGroups(savedTasks, searchQuery, customCats);
-
   const q = searchQuery.toLowerCase().trim();
   const flatSorted = (q ? savedTasks.filter(t => t.title.toLowerCase().includes(q)) : [...savedTasks])
     .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
@@ -525,8 +589,7 @@ export default function TachesScreen() {
                 task={task}
                 onToggle={toggleTask}
                 onDelete={deleteTask}
-                onLongPress={(t, y) => openCtxMenu('day', t, y)}
-                selected={ctxMenu?.task.id === task.id}
+                onLongPress={(t, bounds) => openCtx('day', t, bounds)}
               />
               {idx < tasks.length - 1 && <View style={styles.rowDivider} />}
             </React.Fragment>
@@ -586,18 +649,11 @@ export default function TachesScreen() {
               )}
               {flatSorted.map((saved, idx) => (
                 <React.Fragment key={saved.id}>
-                  <Pressable
-                    style={[styles.savedRow, ctxMenu?.task.id === saved.id && styles.savedRowSelected]}
-                    onLongPress={e => openCtxMenu('saved', saved, e.nativeEvent.pageY)}
-                    delayLongPress={400}>
-                    <Text style={styles.savedTaskTitle} numberOfLines={1}>{saved.title}</Text>
-                    <TouchableOpacity
-                      style={styles.addToDayBtn}
-                      onPress={() => addSavedToDay(saved)}
-                      activeOpacity={0.75}>
-                      <Text style={styles.addToDayIcon}>+</Text>
-                    </TouchableOpacity>
-                  </Pressable>
+                  <SavedTaskRow
+                    saved={saved}
+                    onAdd={addSavedToDay}
+                    onLongPress={(s, bounds) => openCtx('saved', s, bounds)}
+                  />
                   {idx < flatSorted.length - 1 && (
                     <View style={[styles.rowDivider, { marginLeft: 16 }]} />
                   )}
@@ -631,18 +687,11 @@ export default function TachesScreen() {
                       <>
                         {section.tasks.map((saved, idx) => (
                           <React.Fragment key={saved.id}>
-                            <Pressable
-                              style={[styles.savedRow, ctxMenu?.task.id === saved.id && styles.savedRowSelected]}
-                              onLongPress={e => openCtxMenu('saved', saved, e.nativeEvent.pageY)}
-                              delayLongPress={400}>
-                              <Text style={styles.savedTaskTitle} numberOfLines={1}>{saved.title}</Text>
-                              <TouchableOpacity
-                                style={styles.addToDayBtn}
-                                onPress={() => addSavedToDay(saved)}
-                                activeOpacity={0.75}>
-                                <Text style={styles.addToDayIcon}>+</Text>
-                              </TouchableOpacity>
-                            </Pressable>
+                            <SavedTaskRow
+                              saved={saved}
+                              onAdd={addSavedToDay}
+                              onLongPress={(s, bounds) => openCtx('saved', s, bounds)}
+                            />
                             {idx < section.tasks.length - 1 && (
                               <View style={[styles.rowDivider, { marginLeft: 16 }]} />
                             )}
@@ -835,25 +884,107 @@ export default function TachesScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-      {/* ── Backdrop (dismiss on tap outside, very subtle darkening) ── */}
-      {ctxMenu && (
-        <Pressable style={[StyleSheet.absoluteFill, styles.ctxBackdrop]} onPress={closeCtxMenu} />
-      )}
-      {/* ── Context menu card (inline, no Modal) ── */}
-      {ctxMenu && (
-        <Animated.View style={[styles.ctxCard, { top: ctxMenu.top }, ctxCardStyle]} pointerEvents="box-none">
-          <TouchableOpacity style={styles.ctxItem} onPress={handleCtxEdit} activeOpacity={0.7}>
-            <Text style={styles.ctxItemText}>Modifier</Text>
-          </TouchableOpacity>
-          {ctxMenu.type === 'saved' && (
-            <>
-              <View style={styles.ctxSep} />
-              <TouchableOpacity style={styles.ctxItem} onPress={handleCtxDelete} activeOpacity={0.7}>
-                <Text style={[styles.ctxItemText, styles.ctxItemDelete]}>Supprimer</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </Animated.View>
+
+      {/* ════════════════════════════════════════════════
+          INSTAGRAM-STYLE CONTEXT OVERLAY
+      ════════════════════════════════════════════════ */}
+      {ctx && (
+        <Modal visible transparent animationType="none" onRequestClose={closeCtx}>
+          {/* Dismiss tap area */}
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeCtx} />
+
+          {/* Blur + dark overlay */}
+          <Animated.View style={[StyleSheet.absoluteFill, blurStyle]} pointerEvents="none">
+            <BlurView
+              style={StyleSheet.absoluteFill}
+              intensity={55}
+              tint="dark"
+              experimentalBlurMethod="dimezisBlurView"
+            />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.22)' }]} />
+          </Animated.View>
+
+          {/* Lifted task card */}
+          <Animated.View
+            style={[
+              styles.liftedCard,
+              {
+                position: 'absolute',
+                top: ctx.bounds.y,
+                left: ctx.bounds.x,
+                width: ctx.bounds.width,
+              },
+              liftStyle,
+            ]}
+            pointerEvents="none">
+            {ctx.type === 'day' ? (
+              (() => {
+                const t = ctx.task as DayTask;
+                return (
+                  <View style={styles.taskRow}>
+                    <View style={[styles.checkbox, t.completed && styles.checkboxDone]}>
+                      {t.completed && <Text style={styles.checkmark}>✓</Text>}
+                    </View>
+                    <View style={[styles.priorityDot, { backgroundColor: PRIORITY_COLOR[t.priority] }]} />
+                    <Text style={[styles.taskTitle, t.completed && styles.taskTitleDone]} numberOfLines={2}>
+                      {t.title}
+                    </Text>
+                    <View style={styles.taskRight}>
+                      {t.deadline && <Text style={styles.deadlineText}>{t.deadline}</Text>}
+                      <View style={[styles.priorityBadge, { backgroundColor: PRIORITY_BG[t.priority] }]}>
+                        <Text style={[styles.priorityBadgeText, { color: PRIORITY_COLOR[t.priority] }]}>
+                          {PRIORITY_LABEL[t.priority]}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })()
+            ) : (
+              (() => {
+                const t = ctx.task as SavedTask;
+                return (
+                  <View style={styles.savedRow}>
+                    <Text style={styles.savedTaskTitle} numberOfLines={1}>{t.title}</Text>
+                  </View>
+                );
+              })()
+            )}
+          </Animated.View>
+
+          {/* Context menu card */}
+          {(() => {
+            const menuTop = Math.min(
+              ctx.bounds.y + ctx.bounds.height + 8,
+              SCREEN_H - (ctx.type === 'day' ? 58 : 112) - 20,
+            );
+            return (
+              <Animated.View
+                style={[
+                  styles.ctxCard,
+                  {
+                    position: 'absolute',
+                    top: menuTop,
+                    left: ctx.bounds.x,
+                    width: ctx.bounds.width,
+                  },
+                  menuStyle,
+                ]}>
+                <TouchableOpacity style={styles.ctxItem} onPress={handleCtxEdit} activeOpacity={0.7}>
+                  <Text style={styles.ctxItemText}>Modifier</Text>
+                </TouchableOpacity>
+                {ctx.type === 'saved' && (
+                  <>
+                    <View style={styles.ctxSep} />
+                    <TouchableOpacity style={styles.ctxItem} onPress={handleCtxDelete} activeOpacity={0.7}>
+                      <Text style={[styles.ctxItemText, styles.ctxItemDelete]}>Supprimer</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </Animated.View>
+            );
+          })()}
+        </Modal>
       )}
 
       {/* ════════════════════════════════════════════════
@@ -1118,29 +1249,35 @@ const styles = StyleSheet.create({
   },
   addToDayIcon: { fontSize: 18, color: C.primary, fontWeight: '700', lineHeight: 22 },
 
-  // ── Context menu ──
-  ctxBackdrop: { backgroundColor: 'rgba(0,0,0,0.07)' },
-  ctxCard: {
-    position: 'absolute', left: 20, right: 20,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
-    shadowColor: '#1C1B33',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    elevation: 12,
+  // ── Instagram-style context overlay ──
+  liftedCard: {
+    backgroundColor: C.card,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: C.border,
     overflow: 'hidden',
+    shadowColor: '#7C6CF2',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.4,
+    shadowRadius: 22,
+    elevation: 16,
   },
-  ctxItem: { paddingVertical: 13, paddingHorizontal: 18 },
-  ctxItemText: { fontSize: 14, fontWeight: '600', color: C.text },
+  ctxCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.08)',
+    overflow: 'hidden',
+    shadowColor: '#1C1B33',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    elevation: 14,
+  },
+  ctxItem: { paddingVertical: 14, paddingHorizontal: 18 },
+  ctxItemText: { fontSize: 15, fontWeight: '600', color: C.text },
   ctxItemDelete: { color: '#EF4444' },
-  ctxSep: { height: StyleSheet.hairlineWidth, backgroundColor: '#E8E8EC' },
-
-  // ── Selected task states ──
-  taskRowSelected: { backgroundColor: '#F0EEFF' },
-  savedRowSelected: { backgroundColor: '#F0EEFF' },
+  ctxSep: { height: StyleSheet.hairlineWidth, backgroundColor: '#E5E5EA' },
 
   // ── Modals ──
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },

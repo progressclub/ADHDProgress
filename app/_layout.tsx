@@ -18,6 +18,17 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
         <Stack.Screen
+          name="programme"
+          options={{
+            title: 'Mon programme de la semaine',
+            headerBackTitle: 'Retour',
+            headerTintColor: '#7C6CF2',
+            headerStyle: { backgroundColor: '#F5F3FF' },
+            headerShadowVisible: false,
+            headerTitleStyle: { fontWeight: '700', color: '#1C1B33' },
+          }}
+        />
+        <Stack.Screen
           name="routine"
           options={{
             title: 'Ma routine adaptée',

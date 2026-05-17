@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TASKS_KEY = 'adhd_tasks_v1';
+const OBJECTIF_KEY = 'adhd_objectif_v1';
+const DEFAULT_OBJECTIF = "Moins d'écran";
 
 interface Task {
   id: string;
@@ -50,18 +52,37 @@ function motivationFor(ratio: number, done: number): string {
   return 'Incroyable ! Toutes les tâches complétées ! 🎉';
 }
 
+function isSundayEvening(): boolean {
+  const now = new Date();
+  return now.getDay() === 0 && now.getHours() >= 18;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
   const [loaded, setLoaded] = useState(false);
+  const [objectif, setObjectif] = useState(DEFAULT_OBJECTIF);
+  const [showProgrammeBanner, setShowProgrammeBanner] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
 
+  // Load tasks once on mount
   useEffect(() => {
     AsyncStorage.getItem(TASKS_KEY)
       .then(raw => { if (raw) setTasks(JSON.parse(raw)); })
       .finally(() => setLoaded(true));
   }, []);
 
+  // Reload objective + recheck banner every time screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      AsyncStorage.getItem(OBJECTIF_KEY).then(val => {
+        setObjectif(val ?? DEFAULT_OBJECTIF);
+      });
+      setShowProgrammeBanner(isSundayEvening());
+    }, [])
+  );
+
+  // Persist tasks on change
   useEffect(() => {
     if (!loaded) return;
     AsyncStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
@@ -114,6 +135,22 @@ export default function HomeScreen() {
           <Text style={styles.date}>{dateStr}</Text>
         </View>
 
+        {/* Sunday-evening programme banner */}
+        {showProgrammeBanner && (
+          <TouchableOpacity
+            style={styles.programmeBanner}
+            onPress={() => router.push('/programme')}
+            activeOpacity={0.85}>
+            <View style={styles.programmeBannerLeft}>
+              <Text style={styles.programmeBannerEmoji}>📅</Text>
+              <Text style={styles.programmeBannerText}>
+                Je choisis mon programme de la semaine
+              </Text>
+            </View>
+            <Text style={styles.programmeBannerArrow}>→</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Routine button */}
         <TouchableOpacity
           style={styles.routineBtn}
@@ -156,14 +193,18 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            {completedCount > 0
-              ? `${completedCount} tâche${completedCount > 1 ? 's' : ''} accomplie${completedCount > 1 ? 's' : ''} aujourd'hui`
-              : 'Appuie sur une tâche pour la compléter'}
-          </Text>
-        </View>
+        {/* Extra padding so content clears the FAB */}
+        <View style={{ height: 80 }} />
       </ScrollView>
+
+      {/* Floating action button — weekly objective */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/programme')}
+        activeOpacity={0.88}>
+        <Text style={styles.fabLabel}>🎯 Cette semaine : </Text>
+        <Text style={styles.fabObjectif} numberOfLines={1}>{objectif}</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -171,7 +212,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#FFFFFF' },
   scroll: { flex: 1, backgroundColor: C.bg },
-  container: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 48 },
+  container: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 16 },
 
   // Fixed header
   header: {
@@ -182,23 +223,37 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
-  logo: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: C.text,
-    letterSpacing: -0.3,
-  },
+  logo: { fontSize: 20, fontWeight: '800', color: C.text, letterSpacing: -0.3 },
   logoAccent: { color: C.primary },
 
   // Greeting
-  greeting: { marginBottom: 20 },
-  greetingText: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: C.text,
-    letterSpacing: -0.5,
-  },
+  greeting: { marginBottom: 16 },
+  greetingText: { fontSize: 30, fontWeight: '800', color: C.text, letterSpacing: -0.5 },
   date: { fontSize: 15, color: C.textSub, marginTop: 4 },
+
+  // Programme banner (Sunday evening)
+  programmeBanner: {
+    backgroundColor: '#FFF7ED',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: '#FED7AA',
+  },
+  programmeBannerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 },
+  programmeBannerEmoji: { fontSize: 20 },
+  programmeBannerText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400E',
+    lineHeight: 20,
+  },
+  programmeBannerArrow: { fontSize: 18, color: '#D97706', fontWeight: '700' },
 
   // Routine button
   routineBtn: {
@@ -216,16 +271,8 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
   },
-  routineBtnText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  routineBtnArrow: {
-    fontSize: 20,
-    color: 'rgba(255,255,255,0.85)',
-    fontWeight: '600',
-  },
+  routineBtnText: { fontSize: 17, fontWeight: '700', color: '#FFFFFF' },
+  routineBtnArrow: { fontSize: 20, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
 
   // Progress card
   progressCard: {
@@ -292,7 +339,27 @@ const styles = StyleSheet.create({
   taskTitle: { flex: 1, fontSize: 16, fontWeight: '500', color: C.text },
   taskTitleDone: { color: C.textMuted, textDecorationLine: 'line-through' },
 
-  // Footer
-  footer: { alignItems: 'center', marginTop: 32 },
-  footerText: { fontSize: 14, color: C.textSub, textAlign: 'center' },
+  // Floating button
+  fab: {
+    position: 'absolute',
+    bottom: 16,
+    left: 20,
+    right: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#7C6CF2',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 10,
+    borderWidth: 1.5,
+    borderColor: C.primaryLight,
+  },
+  fabLabel: { fontSize: 14, fontWeight: '500', color: C.textSub },
+  fabObjectif: { fontSize: 14, fontWeight: '700', color: C.primary, flexShrink: 1 },
 });

@@ -39,7 +39,8 @@ interface DayTask {
 interface SavedTask {
   id: string;
   title: string;
-  category?: string;
+  priority: Priority;
+  categories: string[];
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -109,6 +110,14 @@ function isToday(date: Date): boolean {
 
 type GroupedSection = { category: string; tasks: SavedTask[] };
 
+function normalizeSaved(raw: any[]): SavedTask[] {
+  return raw.map(t => ({
+    ...t,
+    priority: t.priority ?? 'normale',
+    categories: t.categories ?? (t.category ? [t.category] : []),
+  }));
+}
+
 function buildGroups(
   saved: SavedTask[],
   query: string,
@@ -117,24 +126,25 @@ function buildGroups(
   const q = query.toLowerCase().trim();
   const filtered = q ? saved.filter(t => t.title.toLowerCase().includes(q)) : saved;
 
-  // Ordered categories: predefined → custom → any orphaned → Autres
   const seen = new Set<string>();
   const ordered: string[] = [];
   for (const cat of [...PREDEFINED_CATEGORIES, ...customCats]) {
     if (!seen.has(cat)) { seen.add(cat); ordered.push(cat); }
   }
   for (const t of filtered) {
-    if (t.category && !seen.has(t.category)) {
-      seen.add(t.category); ordered.push(t.category);
+    for (const cat of t.categories) {
+      if (!seen.has(cat)) { seen.add(cat); ordered.push(cat); }
     }
   }
   ordered.push('Autres');
 
   const groups = new Map<string, SavedTask[]>();
   for (const t of filtered) {
-    const cat = t.category ?? 'Autres';
-    if (!groups.has(cat)) groups.set(cat, []);
-    groups.get(cat)!.push(t);
+    const cats = t.categories.length > 0 ? t.categories : ['Autres'];
+    for (const cat of cats) {
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat)!.push(t);
+    }
   }
 
   return ordered
@@ -231,8 +241,9 @@ export default function TachesScreen() {
   // ── "Save task" modal state ──
   const [saveModalVisible, setSaveModalVisible] = useState(false);
   const [saveTitle, setSaveTitle] = useState('');
+  const [savePriority, setSavePriority] = useState<Priority>('normale');
   const [catEnabled, setCatEnabled] = useState(false);
-  const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  const [selectedCats, setSelectedCats] = useState<string[]>([]);
   const [creatingCat, setCreatingCat] = useState(false);
   const [newCatName, setNewCatName] = useState('');
 
@@ -247,7 +258,7 @@ export default function TachesScreen() {
   useEffect(() => {
     AsyncStorage.multiGet([SAVED_TASKS_KEY, CUSTOM_CATS_KEY]).then(
       ([[, st], [, cc]]) => {
-        if (st) setSavedTasks(JSON.parse(st));
+        if (st) setSavedTasks(normalizeSaved(JSON.parse(st)));
         if (cc) setCustomCats(JSON.parse(cc));
       },
     );
@@ -295,58 +306,43 @@ export default function TachesScreen() {
     setAddModalVisible(false);
   };
 
-  // Add a saved task to the current day
   const addSavedToDay = (saved: SavedTask) => {
     persistDayTasks([
       ...tasks,
-      { id: Date.now().toString(), title: saved.title, priority: 'normale', completed: false },
+      { id: Date.now().toString(), title: saved.title, priority: saved.priority, completed: false },
     ]);
   };
 
   // ── Save task handlers ──
   const openSaveModal = () => {
-    setSaveTitle(''); setCatEnabled(false);
-    setSelectedCat(null); setCreatingCat(false); setNewCatName('');
+    setSaveTitle(''); setSavePriority('normale'); setCatEnabled(false);
+    setSelectedCats([]); setCreatingCat(false); setNewCatName('');
     setSaveModalVisible(true);
   };
 
-  const selectCatItem = (cat: string | null, isNew = false) => {
-    setSelectedCat(cat);
-    setCreatingCat(isNew);
-    if (!isNew) setNewCatName('');
+  const toggleCat = (cat: string) =>
+    setSelectedCats(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
+
+  const confirmNewCat = () => {
+    const newCat = newCatName.trim();
+    if (!newCat) return;
+    if (!customCats.includes(newCat)) persistCustomCats([...customCats, newCat]);
+    setSelectedCats(prev => prev.includes(newCat) ? prev : [...prev, newCat]);
+    setCreatingCat(false);
+    setNewCatName('');
   };
 
   const confirmSaveTask = () => {
     const trimmed = saveTitle.trim();
     if (!trimmed) return;
-
-    let category: string | undefined;
-    let updatedCats = customCats;
-
-    if (catEnabled) {
-      if (creatingCat) {
-        const newCat = newCatName.trim();
-        if (!newCat) return;
-        if (!customCats.includes(newCat)) {
-          updatedCats = [...customCats, newCat];
-          persistCustomCats(updatedCats);
-        }
-        category = newCat;
-      } else if (selectedCat) {
-        category = selectedCat;
-      }
-    }
-
     persistSavedTasks([
       ...savedTasks,
-      { id: Date.now().toString(), title: trimmed, category },
+      { id: Date.now().toString(), title: trimmed, priority: savePriority, categories: catEnabled ? selectedCats : [] },
     ]);
     setSaveModalVisible(false);
   };
 
-  const canSave =
-    saveTitle.trim().length > 0 &&
-    !(catEnabled && creatingCat && !newCatName.trim());
+  const canSave = saveTitle.trim().length > 0;
 
   // ── Grouped saved tasks ──
   const groups = buildGroups(savedTasks, searchQuery, customCats);
@@ -573,57 +569,74 @@ export default function TachesScreen() {
               returnKeyType="done"
             />
 
+            <Text style={styles.fieldLabel}>Priorité</Text>
+            <View style={styles.priorityRow}>
+              {(['haute', 'normale', 'basse'] as Priority[]).map(p => (
+                <TouchableOpacity
+                  key={p}
+                  style={[styles.priorityBtn, { borderColor: PRIORITY_COLOR[p] }, savePriority === p && { backgroundColor: PRIORITY_COLOR[p] }]}
+                  onPress={() => setSavePriority(p)}
+                  activeOpacity={0.75}>
+                  <Text style={[styles.priorityBtnText, { color: savePriority === p ? '#FFFFFF' : PRIORITY_COLOR[p] }]}>
+                    {PRIORITY_LABEL[p]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             {/* Category toggle */}
             <View style={styles.toggleRow}>
               <Text style={styles.fieldLabel}>Catégorie</Text>
               <Switch
                 value={catEnabled}
-                onValueChange={v => { setCatEnabled(v); if (!v) { setSelectedCat(null); setCreatingCat(false); setNewCatName(''); } }}
+                onValueChange={v => { setCatEnabled(v); if (!v) { setSelectedCats([]); setCreatingCat(false); setNewCatName(''); } }}
                 trackColor={{ false: '#E5E7EB', true: C.primaryMuted }}
                 thumbColor={catEnabled ? C.primary : '#F9FAFB'}
               />
             </View>
 
             {catEnabled && (
-              <View style={styles.catList}>
-                {allCatsForModal.map(cat => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={styles.catItem}
-                    onPress={() => selectCatItem(cat, false)}
-                    activeOpacity={0.7}>
-                    <View style={[styles.radio, selectedCat === cat && !creatingCat && styles.radioSelected]}>
-                      {selectedCat === cat && !creatingCat && <View style={styles.radioDot} />}
-                    </View>
-                    <Text style={[styles.catItemText, selectedCat === cat && !creatingCat && styles.catItemTextSelected]}>
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-
-                {/* Create new category */}
+              <View style={styles.catChipsWrap}>
+                {allCatsForModal.map(cat => {
+                  const isSel = selectedCats.includes(cat);
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[styles.catChip, isSel && styles.catChipSelected]}
+                      onPress={() => toggleCat(cat)}
+                      activeOpacity={0.75}>
+                      <Text style={[styles.catChipText, isSel && styles.catChipTextSelected]}>{cat}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
                 <TouchableOpacity
-                  style={styles.catItem}
-                  onPress={() => selectCatItem(null, true)}
-                  activeOpacity={0.7}>
-                  <View style={[styles.radio, creatingCat && styles.radioSelected]}>
-                    {creatingCat && <View style={styles.radioDot} />}
-                  </View>
-                  <Text style={[styles.catItemText, styles.catItemNew, creatingCat && styles.catItemTextSelected]}>
-                    Créer une nouvelle catégorie
+                  style={[styles.catChip, styles.catChipNew, creatingCat && styles.catChipSelected]}
+                  onPress={() => setCreatingCat(prev => !prev)}
+                  activeOpacity={0.75}>
+                  <Text style={[styles.catChipText, styles.catChipNewText, creatingCat && styles.catChipTextSelected]}>
+                    + Créer une catégorie
                   </Text>
                 </TouchableOpacity>
-
                 {creatingCat && (
-                  <TextInput
-                    style={[styles.input, styles.catInput]}
-                    placeholder="Nom de la catégorie"
-                    placeholderTextColor={C.textMuted}
-                    value={newCatName}
-                    onChangeText={setNewCatName}
-                    returnKeyType="done"
-                    autoFocus
-                  />
+                  <View style={styles.newCatRow}>
+                    <TextInput
+                      style={styles.newCatInput}
+                      placeholder="Nom de la catégorie"
+                      placeholderTextColor={C.textMuted}
+                      value={newCatName}
+                      onChangeText={setNewCatName}
+                      returnKeyType="done"
+                      onSubmitEditing={confirmNewCat}
+                      autoFocus
+                    />
+                    <TouchableOpacity
+                      style={[styles.newCatConfirm, !newCatName.trim() && styles.newCatConfirmDisabled]}
+                      onPress={confirmNewCat}
+                      disabled={!newCatName.trim()}
+                      activeOpacity={0.85}>
+                      <Text style={styles.newCatConfirmText}>✓</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
             )}
@@ -760,16 +773,29 @@ const styles = StyleSheet.create({
   priorityBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, alignItems: 'center' },
   priorityBtnText: { fontSize: 13, fontWeight: '700' },
 
-  // Category list in save modal
-  catList: { marginBottom: 4 },
-  catItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, gap: 12 },
-  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#D1D5DB', alignItems: 'center', justifyContent: 'center' },
-  radioSelected: { borderColor: C.primary },
-  radioDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: C.primary },
-  catItemText: { fontSize: 15, color: C.text, flex: 1 },
-  catItemNew: { color: C.primary, fontWeight: '600' },
-  catItemTextSelected: { fontWeight: '700', color: C.primary },
-  catInput: { marginTop: 8, marginBottom: 4, marginLeft: 32 },
+  // Category chips in save modal
+  catChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  catChip: {
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
+    borderWidth: 1.5, borderColor: C.border, backgroundColor: '#F9F8FF',
+  },
+  catChipSelected: { borderColor: C.primary, backgroundColor: C.primary },
+  catChipText: { fontSize: 14, fontWeight: '600', color: C.textSub },
+  catChipTextSelected: { color: '#FFFFFF' },
+  catChipNew: { borderColor: C.primary, backgroundColor: C.primaryLight },
+  catChipNewText: { color: C.primary },
+  newCatRow: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%', marginTop: 4 },
+  newCatInput: {
+    flex: 1, backgroundColor: '#F9F8FF', borderRadius: 12, borderWidth: 1.5,
+    borderColor: C.border, paddingHorizontal: 14, paddingVertical: 10,
+    fontSize: 15, color: C.text,
+  },
+  newCatConfirm: {
+    width: 40, height: 40, borderRadius: 11, backgroundColor: C.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  newCatConfirmDisabled: { backgroundColor: C.primaryMuted },
+  newCatConfirmText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
 
   confirmBtn: {
     backgroundColor: C.primary, borderRadius: 14, paddingVertical: 16, alignItems: 'center',

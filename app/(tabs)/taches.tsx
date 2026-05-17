@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -21,6 +22,7 @@ import Animated, {
   withSpring,
   interpolate,
   Extrapolation,
+  runOnJS,
 } from 'react-native-reanimated';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 
@@ -75,6 +77,7 @@ const PRIORITY_LABEL: Record<Priority, string> = {
 
 const DELETE_W = 88;
 const SPRING = { damping: 20, stiffness: 220, mass: 0.9 };
+const SCREEN_H = Dimensions.get('window').height;
 
 const PREDEFINED_CATEGORIES = ['Ma routine du matin', 'Ma routine du soir'];
 
@@ -158,9 +161,10 @@ interface RowProps {
   task: DayTask;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  onLongPress: (task: DayTask, y: number) => void;
 }
 
-function SwipeableTaskRow({ task, onToggle, onDelete }: RowProps) {
+function SwipeableTaskRow({ task, onToggle, onDelete, onLongPress }: RowProps) {
   const x = useSharedValue(0);
 
   const pan = Gesture.Pan()
@@ -173,6 +177,12 @@ function SwipeableTaskRow({ task, onToggle, onDelete }: RowProps) {
       const open = x.value < -(DELETE_W / 2) || e.velocityX < -600;
       x.value = withSpring(open ? -DELETE_W : 0, SPRING);
     });
+
+  const longPress = Gesture.LongPress()
+    .minDuration(400)
+    .onStart(e => { runOnJS(onLongPress)(task, e.absoluteY); });
+
+  const combined = Gesture.Race(pan, longPress);
 
   const rowStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: x.value }],
@@ -188,7 +198,7 @@ function SwipeableTaskRow({ task, onToggle, onDelete }: RowProps) {
   };
 
   return (
-    <GestureDetector gesture={pan}>
+    <GestureDetector gesture={combined}>
       <View style={styles.swipeContainer}>
         <View style={styles.deleteZone}>
           <TouchableOpacity style={styles.deleteInner} onPress={() => onDelete(task.id)} activeOpacity={0.85}>
@@ -239,6 +249,25 @@ export default function TachesScreen() {
   const [addPriority, setAddPriority] = useState<Priority>('normale');
   const [deadlineEnabled, setDeadlineEnabled] = useState(false);
   const [deadlineTime, setDeadlineTime] = useState('');
+
+  // ── Context menu ──
+  const [ctxMenu, setCtxMenu] = useState<{ type: 'day' | 'saved'; task: DayTask | SavedTask; y: number } | null>(null);
+
+  // ── Edit day task modal ──
+  const [editDayModal, setEditDayModal] = useState(false);
+  const [editDayId, setEditDayId] = useState('');
+  const [editDayTitle, setEditDayTitle] = useState('');
+  const [editDayPriority, setEditDayPriority] = useState<Priority>('normale');
+
+  // ── Edit saved task modal ──
+  const [editSavedModal, setEditSavedModal] = useState(false);
+  const [editSavedId, setEditSavedId] = useState('');
+  const [editSavedTitle, setEditSavedTitle] = useState('');
+  const [editSavedPriority, setEditSavedPriority] = useState<Priority>('normale');
+  const [editSavedCatEnabled, setEditSavedCatEnabled] = useState(false);
+  const [editSavedCats, setEditSavedCats] = useState<string[]>([]);
+  const [editCreatingCat, setEditCreatingCat] = useState(false);
+  const [editNewCatName, setEditNewCatName] = useState('');
 
   // ── "Save task" modal state ──
   const [saveModalVisible, setSaveModalVisible] = useState(false);
@@ -313,6 +342,65 @@ export default function TachesScreen() {
       ...tasks,
       { id: Date.now().toString(), title: saved.title, priority: saved.priority, completed: false },
     ]);
+  };
+
+  // ── Context menu handlers ──
+  const openCtxMenu = (type: 'day' | 'saved', task: DayTask | SavedTask, y: number) => {
+    const clampedY = Math.min(Math.max(y, 80), SCREEN_H - 160);
+    setCtxMenu({ type, task, y: clampedY });
+  };
+
+  const closeCtxMenu = () => setCtxMenu(null);
+
+  const handleCtxEdit = () => {
+    if (!ctxMenu) return;
+    closeCtxMenu();
+    if (ctxMenu.type === 'day') {
+      const t = ctxMenu.task as DayTask;
+      setEditDayId(t.id); setEditDayTitle(t.title); setEditDayPriority(t.priority);
+      setEditDayModal(true);
+    } else {
+      const t = ctxMenu.task as SavedTask;
+      setEditSavedId(t.id); setEditSavedTitle(t.title); setEditSavedPriority(t.priority);
+      const hasCats = t.categories.length > 0;
+      setEditSavedCatEnabled(hasCats); setEditSavedCats(t.categories);
+      setEditCreatingCat(false); setEditNewCatName('');
+      setEditSavedModal(true);
+    }
+  };
+
+  const handleCtxDelete = () => {
+    if (!ctxMenu || ctxMenu.type !== 'saved') return;
+    closeCtxMenu();
+    persistSavedTasks(savedTasks.filter(t => t.id !== ctxMenu.task.id));
+  };
+
+  const confirmEditDay = () => {
+    const trimmed = editDayTitle.trim();
+    if (!trimmed) return;
+    persistDayTasks(tasks.map(t =>
+      t.id === editDayId ? { ...t, title: trimmed, priority: editDayPriority } : t
+    ));
+    setEditDayModal(false);
+  };
+
+  const confirmEditNewCat = () => {
+    const newCat = editNewCatName.trim();
+    if (!newCat) return;
+    if (!customCats.includes(newCat)) persistCustomCats([...customCats, newCat]);
+    setEditSavedCats(prev => prev.includes(newCat) ? prev : [...prev, newCat]);
+    setEditCreatingCat(false); setEditNewCatName('');
+  };
+
+  const confirmEditSaved = () => {
+    const trimmed = editSavedTitle.trim();
+    if (!trimmed) return;
+    persistSavedTasks(savedTasks.map(t =>
+      t.id === editSavedId
+        ? { ...t, title: trimmed, priority: editSavedPriority, categories: editSavedCatEnabled ? editSavedCats : [] }
+        : t
+    ));
+    setEditSavedModal(false);
   };
 
   // ── Save task handlers ──
@@ -408,7 +496,12 @@ export default function TachesScreen() {
           {tasks.length > 0 && <View style={styles.divider} />}
           {tasks.map((task, idx) => (
             <React.Fragment key={task.id}>
-              <SwipeableTaskRow task={task} onToggle={toggleTask} onDelete={deleteTask} />
+              <SwipeableTaskRow
+                task={task}
+                onToggle={toggleTask}
+                onDelete={deleteTask}
+                onLongPress={(t, y) => openCtxMenu('day', t, y)}
+              />
               {idx < tasks.length - 1 && <View style={styles.rowDivider} />}
             </React.Fragment>
           ))}
@@ -467,7 +560,10 @@ export default function TachesScreen() {
               )}
               {flatSorted.map((saved, idx) => (
                 <React.Fragment key={saved.id}>
-                  <View style={styles.savedRow}>
+                  <Pressable
+                    style={styles.savedRow}
+                    onLongPress={e => openCtxMenu('saved', saved, e.nativeEvent.pageY)}
+                    delayLongPress={400}>
                     <Text style={styles.savedTaskTitle} numberOfLines={1}>{saved.title}</Text>
                     <TouchableOpacity
                       style={styles.addToDayBtn}
@@ -475,7 +571,7 @@ export default function TachesScreen() {
                       activeOpacity={0.75}>
                       <Text style={styles.addToDayIcon}>+</Text>
                     </TouchableOpacity>
-                  </View>
+                  </Pressable>
                   {idx < flatSorted.length - 1 && (
                     <View style={[styles.rowDivider, { marginLeft: 16 }]} />
                   )}
@@ -509,7 +605,10 @@ export default function TachesScreen() {
                       <>
                         {section.tasks.map((saved, idx) => (
                           <React.Fragment key={saved.id}>
-                            <View style={styles.savedRow}>
+                            <Pressable
+                              style={styles.savedRow}
+                              onLongPress={e => openCtxMenu('saved', saved, e.nativeEvent.pageY)}
+                              delayLongPress={400}>
                               <Text style={styles.savedTaskTitle} numberOfLines={1}>{saved.title}</Text>
                               <TouchableOpacity
                                 style={styles.addToDayBtn}
@@ -517,7 +616,7 @@ export default function TachesScreen() {
                                 activeOpacity={0.75}>
                                 <Text style={styles.addToDayIcon}>+</Text>
                               </TouchableOpacity>
-                            </View>
+                            </Pressable>
                             {idx < section.tasks.length - 1 && (
                               <View style={[styles.rowDivider, { marginLeft: 16 }]} />
                             )}
@@ -710,6 +809,182 @@ export default function TachesScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      {/* ════════════════════════════════════════════════
+          CONTEXT MENU
+      ════════════════════════════════════════════════ */}
+      {ctxMenu && (
+        <Modal visible transparent animationType="fade" onRequestClose={closeCtxMenu}>
+          <Pressable style={styles.ctxOverlay} onPress={closeCtxMenu}>
+            <View style={[styles.ctxMenu, { top: ctxMenu.y }]}>
+              <TouchableOpacity style={styles.ctxItem} onPress={handleCtxEdit} activeOpacity={0.75}>
+                <Text style={styles.ctxItemText}>✏️  Modifier</Text>
+              </TouchableOpacity>
+              {ctxMenu.type === 'saved' && (
+                <>
+                  <View style={styles.ctxDivider} />
+                  <TouchableOpacity style={styles.ctxItem} onPress={handleCtxDelete} activeOpacity={0.75}>
+                    <Text style={[styles.ctxItemText, styles.ctxItemDanger]}>🗑  Supprimer</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </Pressable>
+        </Modal>
+      )}
+
+      {/* ════════════════════════════════════════════════
+          MODAL — Edit day task
+      ════════════════════════════════════════════════ */}
+      <Modal visible={editDayModal} animationType="slide" transparent onRequestClose={() => setEditDayModal(false)}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setEditDayModal(false)} />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Modifier la tâche</Text>
+
+            <Text style={styles.fieldLabel}>Titre</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Titre de la tâche"
+              placeholderTextColor={C.textMuted}
+              value={editDayTitle}
+              onChangeText={setEditDayTitle}
+              autoFocus
+              autoCapitalize="sentences"
+              returnKeyType="done"
+            />
+
+            <Text style={styles.fieldLabel}>Priorité</Text>
+            <View style={styles.priorityRow}>
+              {(['haute', 'normale', 'basse'] as Priority[]).map(p => (
+                <TouchableOpacity
+                  key={p}
+                  style={[styles.priorityBtn, { borderColor: PRIORITY_COLOR[p] }, editDayPriority === p && { backgroundColor: PRIORITY_COLOR[p] }]}
+                  onPress={() => setEditDayPriority(p)}
+                  activeOpacity={0.75}>
+                  <Text style={[styles.priorityBtnText, { color: editDayPriority === p ? '#FFFFFF' : PRIORITY_COLOR[p] }]}>
+                    {PRIORITY_LABEL[p]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.confirmBtn, !editDayTitle.trim() && styles.confirmBtnDisabled]}
+              onPress={confirmEditDay}
+              disabled={!editDayTitle.trim()}
+              activeOpacity={0.85}>
+              <Text style={styles.confirmBtnText}>Enregistrer</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ════════════════════════════════════════════════
+          MODAL — Edit saved task
+      ════════════════════════════════════════════════ */}
+      <Modal visible={editSavedModal} animationType="slide" transparent onRequestClose={() => setEditSavedModal(false)}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setEditSavedModal(false)} />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Modifier la tâche</Text>
+
+            <Text style={styles.fieldLabel}>Titre</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Titre de la tâche"
+              placeholderTextColor={C.textMuted}
+              value={editSavedTitle}
+              onChangeText={setEditSavedTitle}
+              autoFocus
+              autoCapitalize="sentences"
+              returnKeyType="done"
+            />
+
+            <Text style={styles.fieldLabel}>Priorité</Text>
+            <View style={styles.priorityRow}>
+              {(['haute', 'normale', 'basse'] as Priority[]).map(p => (
+                <TouchableOpacity
+                  key={p}
+                  style={[styles.priorityBtn, { borderColor: PRIORITY_COLOR[p] }, editSavedPriority === p && { backgroundColor: PRIORITY_COLOR[p] }]}
+                  onPress={() => setEditSavedPriority(p)}
+                  activeOpacity={0.75}>
+                  <Text style={[styles.priorityBtnText, { color: editSavedPriority === p ? '#FFFFFF' : PRIORITY_COLOR[p] }]}>
+                    {PRIORITY_LABEL[p]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.toggleRow}>
+              <Text style={styles.fieldLabel}>Catégorie</Text>
+              <Switch
+                value={editSavedCatEnabled}
+                onValueChange={v => { setEditSavedCatEnabled(v); if (!v) { setEditSavedCats([]); setEditCreatingCat(false); setEditNewCatName(''); } }}
+                trackColor={{ false: '#E5E7EB', true: C.primaryMuted }}
+                thumbColor={editSavedCatEnabled ? C.primary : '#F9FAFB'}
+              />
+            </View>
+
+            {editSavedCatEnabled && (
+              <View style={styles.catChipsWrap}>
+                {[...PREDEFINED_CATEGORIES, ...customCats].map(cat => {
+                  const isSel = editSavedCats.includes(cat);
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[styles.catChip, isSel && styles.catChipSelected]}
+                      onPress={() => setEditSavedCats(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat])}
+                      activeOpacity={0.75}>
+                      <Text style={[styles.catChipText, isSel && styles.catChipTextSelected]}>{cat}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+                <TouchableOpacity
+                  style={[styles.catChip, styles.catChipNew, editCreatingCat && styles.catChipSelected]}
+                  onPress={() => setEditCreatingCat(prev => !prev)}
+                  activeOpacity={0.75}>
+                  <Text style={[styles.catChipText, styles.catChipNewText, editCreatingCat && styles.catChipTextSelected]}>
+                    + Créer une catégorie
+                  </Text>
+                </TouchableOpacity>
+                {editCreatingCat && (
+                  <View style={styles.newCatRow}>
+                    <TextInput
+                      style={styles.newCatInput}
+                      placeholder="Nom de la catégorie"
+                      placeholderTextColor={C.textMuted}
+                      value={editNewCatName}
+                      onChangeText={setEditNewCatName}
+                      returnKeyType="done"
+                      onSubmitEditing={confirmEditNewCat}
+                      autoCapitalize="sentences"
+                      autoFocus
+                    />
+                    <TouchableOpacity
+                      style={[styles.newCatConfirm, !editNewCatName.trim() && styles.newCatConfirmDisabled]}
+                      onPress={confirmEditNewCat}
+                      disabled={!editNewCatName.trim()}
+                      activeOpacity={0.85}>
+                      <Text style={styles.newCatConfirmText}>✓</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.confirmBtn, { marginTop: 24 }, !editSavedTitle.trim() && styles.confirmBtnDisabled]}
+              onPress={confirmEditSaved}
+              disabled={!editSavedTitle.trim()}
+              activeOpacity={0.85}>
+              <Text style={styles.confirmBtnText}>Enregistrer</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -818,6 +1093,20 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   addToDayIcon: { fontSize: 18, color: C.primary, fontWeight: '700', lineHeight: 22 },
+
+  // ── Context menu ──
+  ctxOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+  ctxMenu: {
+    position: 'absolute', left: 24, right: 24,
+    backgroundColor: '#FFFFFF', borderRadius: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18, shadowRadius: 20, elevation: 12,
+    overflow: 'hidden',
+  },
+  ctxItem: { paddingVertical: 16, paddingHorizontal: 20 },
+  ctxItemText: { fontSize: 16, fontWeight: '600', color: C.text },
+  ctxItemDanger: { color: '#EF4444' },
+  ctxDivider: { height: 1, backgroundColor: C.border, marginHorizontal: 0 },
 
   // ── Modals ──
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },

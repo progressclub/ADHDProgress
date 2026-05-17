@@ -12,6 +12,7 @@ import {
   Platform,
   Pressable,
 } from 'react-native';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -124,6 +125,9 @@ export default function TachesScreen() {
   const toggleTask = (id: string) =>
     persistTasks(tasks.map(t => (t.id === id ? { ...t, completed: !t.completed } : t)));
 
+  const deleteTask = (id: string) =>
+    persistTasks(tasks.filter(t => t.id !== id));
+
   const openModal = () => {
     setTitle('');
     setPriority('normale');
@@ -200,37 +204,49 @@ export default function TachesScreen() {
           {tasks.length > 0 && <View style={styles.divider} />}
           {tasks.map((task, idx) => (
             <React.Fragment key={task.id}>
-              <TouchableOpacity
-                style={styles.taskRow}
-                onPress={() => toggleTask(task.id)}
-                activeOpacity={0.7}>
-                {/* Checkbox */}
-                <View style={[styles.checkbox, task.completed && styles.checkboxDone]}>
-                  {task.completed && <Text style={styles.checkmark}>✓</Text>}
-                </View>
-
-                {/* Priority dot */}
-                <View style={[styles.priorityDot, { backgroundColor: PRIORITY_COLOR[task.priority] }]} />
-
-                {/* Title */}
-                <Text
-                  style={[styles.taskTitle, task.completed && styles.taskTitleDone]}
-                  numberOfLines={2}>
-                  {task.title}
-                </Text>
-
-                {/* Right side: deadline + priority badge */}
-                <View style={styles.taskRight}>
-                  {task.deadline && (
-                    <Text style={styles.deadlineText}>{task.deadline}</Text>
-                  )}
-                  <View style={[styles.priorityBadge, { backgroundColor: PRIORITY_BG[task.priority] }]}>
-                    <Text style={[styles.priorityBadgeText, { color: PRIORITY_COLOR[task.priority] }]}>
-                      {PRIORITY_LABEL[task.priority]}
-                    </Text>
+              <Swipeable
+                renderRightActions={() => (
+                  <TouchableOpacity
+                    style={styles.deleteAction}
+                    onPress={() => deleteTask(task.id)}
+                    activeOpacity={0.85}>
+                    <Text style={styles.deleteActionText}>Supprimer</Text>
+                  </TouchableOpacity>
+                )}
+                overshootRight={false}
+                friction={2}>
+                <TouchableOpacity
+                  style={styles.taskRow}
+                  onPress={() => toggleTask(task.id)}
+                  activeOpacity={0.7}>
+                  {/* Checkbox */}
+                  <View style={[styles.checkbox, task.completed && styles.checkboxDone]}>
+                    {task.completed && <Text style={styles.checkmark}>✓</Text>}
                   </View>
-                </View>
-              </TouchableOpacity>
+
+                  {/* Priority dot */}
+                  <View style={[styles.priorityDot, { backgroundColor: PRIORITY_COLOR[task.priority] }]} />
+
+                  {/* Title */}
+                  <Text
+                    style={[styles.taskTitle, task.completed && styles.taskTitleDone]}
+                    numberOfLines={2}>
+                    {task.title}
+                  </Text>
+
+                  {/* Right side: deadline + priority badge */}
+                  <View style={styles.taskRight}>
+                    {task.deadline && (
+                      <Text style={styles.deadlineText}>{task.deadline}</Text>
+                    )}
+                    <View style={[styles.priorityBadge, { backgroundColor: PRIORITY_BG[task.priority] }]}>
+                      <Text style={[styles.priorityBadgeText, { color: PRIORITY_COLOR[task.priority] }]}>
+                        {PRIORITY_LABEL[task.priority]}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              </Swipeable>
               {idx < tasks.length - 1 && <View style={styles.rowDivider} />}
             </React.Fragment>
           ))}
@@ -450,6 +466,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 24,
     paddingHorizontal: 16,
+  },
+
+  // Swipe-to-delete
+  deleteAction: {
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 96,
+  },
+  deleteActionText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 
   // Modal overlay

@@ -163,9 +163,10 @@ interface RowProps {
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onLongPress: (task: DayTask, y: number) => void;
+  selected?: boolean;
 }
 
-function SwipeableTaskRow({ task, onToggle, onDelete, onLongPress }: RowProps) {
+function SwipeableTaskRow({ task, onToggle, onDelete, onLongPress, selected }: RowProps) {
   const x = useSharedValue(0);
 
   const pan = Gesture.Pan()
@@ -206,7 +207,7 @@ function SwipeableTaskRow({ task, onToggle, onDelete, onLongPress }: RowProps) {
             <Animated.Text style={[styles.deleteText, textStyle]}>Supprimer</Animated.Text>
           </TouchableOpacity>
         </View>
-        <Animated.View style={[styles.taskRowWrap, rowStyle]}>
+        <Animated.View style={[styles.taskRowWrap, rowStyle, selected && styles.taskRowSelected]}>
           <TouchableOpacity style={styles.taskRow} onPress={handleRowPress} activeOpacity={0.7}>
             <View style={[styles.checkbox, task.completed && styles.checkboxDone]}>
               {task.completed && <Text style={styles.checkmark}>✓</Text>}
@@ -525,6 +526,7 @@ export default function TachesScreen() {
                 onToggle={toggleTask}
                 onDelete={deleteTask}
                 onLongPress={(t, y) => openCtxMenu('day', t, y)}
+                selected={ctxMenu?.task.id === task.id}
               />
               {idx < tasks.length - 1 && <View style={styles.rowDivider} />}
             </React.Fragment>
@@ -585,7 +587,7 @@ export default function TachesScreen() {
               {flatSorted.map((saved, idx) => (
                 <React.Fragment key={saved.id}>
                   <Pressable
-                    style={styles.savedRow}
+                    style={[styles.savedRow, ctxMenu?.task.id === saved.id && styles.savedRowSelected]}
                     onLongPress={e => openCtxMenu('saved', saved, e.nativeEvent.pageY)}
                     delayLongPress={400}>
                     <Text style={styles.savedTaskTitle} numberOfLines={1}>{saved.title}</Text>
@@ -630,7 +632,7 @@ export default function TachesScreen() {
                         {section.tasks.map((saved, idx) => (
                           <React.Fragment key={saved.id}>
                             <Pressable
-                              style={styles.savedRow}
+                              style={[styles.savedRow, ctxMenu?.task.id === saved.id && styles.savedRowSelected]}
                               onLongPress={e => openCtxMenu('saved', saved, e.nativeEvent.pageY)}
                               delayLongPress={400}>
                               <Text style={styles.savedTaskTitle} numberOfLines={1}>{saved.title}</Text>
@@ -833,30 +835,25 @@ export default function TachesScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-      {/* ════════════════════════════════════════════════
-          CONTEXT MENU
-      ════════════════════════════════════════════════ */}
+      {/* ── Backdrop (dismiss on tap outside, very subtle darkening) ── */}
       {ctxMenu && (
-        <Modal visible transparent animationType="none" onRequestClose={closeCtxMenu}>
-          {/* Dismiss overlay */}
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeCtxMenu}>
-            <Animated.View style={[StyleSheet.absoluteFill, styles.ctxOverlay, { opacity: ctxFade }]} />
-          </Pressable>
-          {/* Floating card */}
-          <Animated.View style={[styles.ctxCard, { top: ctxMenu.top }, ctxCardStyle]}>
-            <TouchableOpacity style={styles.ctxItem} onPress={handleCtxEdit} activeOpacity={0.7}>
-              <Text style={styles.ctxItemText}>Modifier</Text>
-            </TouchableOpacity>
-            {ctxMenu.type === 'saved' && (
-              <>
-                <View style={styles.ctxSep} />
-                <TouchableOpacity style={styles.ctxItem} onPress={handleCtxDelete} activeOpacity={0.7}>
-                  <Text style={[styles.ctxItemText, styles.ctxItemDelete]}>Supprimer</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </Animated.View>
-        </Modal>
+        <Pressable style={[StyleSheet.absoluteFill, styles.ctxBackdrop]} onPress={closeCtxMenu} />
+      )}
+      {/* ── Context menu card (inline, no Modal) ── */}
+      {ctxMenu && (
+        <Animated.View style={[styles.ctxCard, { top: ctxMenu.top }, ctxCardStyle]} pointerEvents="box-none">
+          <TouchableOpacity style={styles.ctxItem} onPress={handleCtxEdit} activeOpacity={0.7}>
+            <Text style={styles.ctxItemText}>Modifier</Text>
+          </TouchableOpacity>
+          {ctxMenu.type === 'saved' && (
+            <>
+              <View style={styles.ctxSep} />
+              <TouchableOpacity style={styles.ctxItem} onPress={handleCtxDelete} activeOpacity={0.7}>
+                <Text style={[styles.ctxItemText, styles.ctxItemDelete]}>Supprimer</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </Animated.View>
       )}
 
       {/* ════════════════════════════════════════════════
@@ -1122,24 +1119,28 @@ const styles = StyleSheet.create({
   addToDayIcon: { fontSize: 18, color: C.primary, fontWeight: '700', lineHeight: 22 },
 
   // ── Context menu ──
-  ctxOverlay: { backgroundColor: 'rgba(0,0,0,0.28)' },
+  ctxBackdrop: { backgroundColor: 'rgba(0,0,0,0.07)' },
   ctxCard: {
-    position: 'absolute', left: 24, right: 24,
+    position: 'absolute', left: 20, right: 20,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 13,
     borderWidth: 1,
-    borderColor: 'rgba(124,108,242,0.10)',
-    shadowColor: '#3B3066',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.14,
-    shadowRadius: 20,
-    elevation: 14,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#1C1B33',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 12,
     overflow: 'hidden',
   },
-  ctxItem: { paddingVertical: 15, paddingHorizontal: 20 },
-  ctxItemText: { fontSize: 15, fontWeight: '600', color: C.text, letterSpacing: 0.1 },
+  ctxItem: { paddingVertical: 13, paddingHorizontal: 18 },
+  ctxItemText: { fontSize: 14, fontWeight: '600', color: C.text },
   ctxItemDelete: { color: '#EF4444' },
-  ctxSep: { height: StyleSheet.hairlineWidth, backgroundColor: C.border },
+  ctxSep: { height: StyleSheet.hairlineWidth, backgroundColor: '#E8E8EC' },
+
+  // ── Selected task states ──
+  taskRowSelected: { backgroundColor: '#F0EEFF' },
+  savedRowSelected: { backgroundColor: '#F0EEFF' },
 
   // ── Modals ──
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },

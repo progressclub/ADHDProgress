@@ -20,6 +20,7 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  withTiming,
   interpolate,
   Extrapolation,
   runOnJS,
@@ -251,7 +252,7 @@ export default function TachesScreen() {
   const [deadlineTime, setDeadlineTime] = useState('');
 
   // ── Context menu ──
-  const [ctxMenu, setCtxMenu] = useState<{ type: 'day' | 'saved'; task: DayTask | SavedTask; y: number } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ type: 'day' | 'saved'; task: DayTask | SavedTask; top: number } | null>(null);
 
   // ── Edit day task modal ──
   const [editDayModal, setEditDayModal] = useState(false);
@@ -344,35 +345,58 @@ export default function TachesScreen() {
     ]);
   };
 
+  // ── Context menu animation ──
+  const ctxFade = useSharedValue(0);
+  const ctxRise = useSharedValue(10);
+  const ctxCardStyle = useAnimatedStyle(() => ({
+    opacity: ctxFade.value,
+    transform: [{ translateY: ctxRise.value }],
+  }));
+
   // ── Context menu handlers ──
-  const openCtxMenu = (type: 'day' | 'saved', task: DayTask | SavedTask, y: number) => {
-    const clampedY = Math.min(Math.max(y, 80), SCREEN_H - 160);
-    setCtxMenu({ type, task, y: clampedY });
+  const openCtxMenu = (type: 'day' | 'saved', task: DayTask | SavedTask, pressY: number) => {
+    const cardH = type === 'day' ? 56 : 116;
+    const showBelow = pressY + cardH + 24 < SCREEN_H - 80;
+    const top = showBelow
+      ? Math.min(pressY + 12, SCREEN_H - cardH - 60)
+      : Math.max(pressY - cardH - 12, 60);
+    ctxFade.value = 0;
+    ctxRise.value = showBelow ? 10 : -10;
+    setCtxMenu({ type, task, top });
+    ctxFade.value = withTiming(1, { duration: 180 });
+    ctxRise.value = withTiming(0, { duration: 220 });
   };
 
-  const closeCtxMenu = () => setCtxMenu(null);
+  const closeCtxMenu = () => {
+    ctxFade.value = withTiming(0, { duration: 160 }, (finished) => {
+      if (finished) runOnJS(setCtxMenu)(null);
+    });
+  };
 
   const handleCtxEdit = () => {
     if (!ctxMenu) return;
-    closeCtxMenu();
-    if (ctxMenu.type === 'day') {
-      const t = ctxMenu.task as DayTask;
+    const { type, task } = ctxMenu;
+    if (type === 'day') {
+      const t = task as DayTask;
       setEditDayId(t.id); setEditDayTitle(t.title); setEditDayPriority(t.priority);
-      setEditDayModal(true);
     } else {
-      const t = ctxMenu.task as SavedTask;
+      const t = task as SavedTask;
       setEditSavedId(t.id); setEditSavedTitle(t.title); setEditSavedPriority(t.priority);
-      const hasCats = t.categories.length > 0;
-      setEditSavedCatEnabled(hasCats); setEditSavedCats(t.categories);
+      setEditSavedCatEnabled(t.categories.length > 0); setEditSavedCats(t.categories);
       setEditCreatingCat(false); setEditNewCatName('');
-      setEditSavedModal(true);
     }
+    ctxFade.value = 0;
+    setCtxMenu(null);
+    if (type === 'day') setEditDayModal(true);
+    else setEditSavedModal(true);
   };
 
   const handleCtxDelete = () => {
     if (!ctxMenu || ctxMenu.type !== 'saved') return;
-    closeCtxMenu();
-    persistSavedTasks(savedTasks.filter(t => t.id !== ctxMenu.task.id));
+    const taskId = ctxMenu.task.id;
+    ctxFade.value = 0;
+    setCtxMenu(null);
+    persistSavedTasks(savedTasks.filter(t => t.id !== taskId));
   };
 
   const confirmEditDay = () => {
@@ -813,22 +837,25 @@ export default function TachesScreen() {
           CONTEXT MENU
       ════════════════════════════════════════════════ */}
       {ctxMenu && (
-        <Modal visible transparent animationType="fade" onRequestClose={closeCtxMenu}>
-          <Pressable style={styles.ctxOverlay} onPress={closeCtxMenu}>
-            <View style={[styles.ctxMenu, { top: ctxMenu.y }]}>
-              <TouchableOpacity style={styles.ctxItem} onPress={handleCtxEdit} activeOpacity={0.75}>
-                <Text style={styles.ctxItemText}>✏️  Modifier</Text>
-              </TouchableOpacity>
-              {ctxMenu.type === 'saved' && (
-                <>
-                  <View style={styles.ctxDivider} />
-                  <TouchableOpacity style={styles.ctxItem} onPress={handleCtxDelete} activeOpacity={0.75}>
-                    <Text style={[styles.ctxItemText, styles.ctxItemDanger]}>🗑  Supprimer</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </View>
+        <Modal visible transparent animationType="none" onRequestClose={closeCtxMenu}>
+          {/* Dismiss overlay */}
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeCtxMenu}>
+            <Animated.View style={[StyleSheet.absoluteFill, styles.ctxOverlay, { opacity: ctxFade }]} />
           </Pressable>
+          {/* Floating card */}
+          <Animated.View style={[styles.ctxCard, { top: ctxMenu.top }, ctxCardStyle]}>
+            <TouchableOpacity style={styles.ctxItem} onPress={handleCtxEdit} activeOpacity={0.7}>
+              <Text style={styles.ctxItemText}>Modifier</Text>
+            </TouchableOpacity>
+            {ctxMenu.type === 'saved' && (
+              <>
+                <View style={styles.ctxSep} />
+                <TouchableOpacity style={styles.ctxItem} onPress={handleCtxDelete} activeOpacity={0.7}>
+                  <Text style={[styles.ctxItemText, styles.ctxItemDelete]}>Supprimer</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </Animated.View>
         </Modal>
       )}
 
@@ -1095,18 +1122,24 @@ const styles = StyleSheet.create({
   addToDayIcon: { fontSize: 18, color: C.primary, fontWeight: '700', lineHeight: 22 },
 
   // ── Context menu ──
-  ctxOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
-  ctxMenu: {
+  ctxOverlay: { backgroundColor: 'rgba(0,0,0,0.28)' },
+  ctxCard: {
     position: 'absolute', left: 24, right: 24,
-    backgroundColor: '#FFFFFF', borderRadius: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18, shadowRadius: 20, elevation: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(124,108,242,0.10)',
+    shadowColor: '#3B3066',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    elevation: 14,
     overflow: 'hidden',
   },
-  ctxItem: { paddingVertical: 16, paddingHorizontal: 20 },
-  ctxItemText: { fontSize: 16, fontWeight: '600', color: C.text },
-  ctxItemDanger: { color: '#EF4444' },
-  ctxDivider: { height: 1, backgroundColor: C.border, marginHorizontal: 0 },
+  ctxItem: { paddingVertical: 15, paddingHorizontal: 20 },
+  ctxItemText: { fontSize: 15, fontWeight: '600', color: C.text, letterSpacing: 0.1 },
+  ctxItemDelete: { color: '#EF4444' },
+  ctxSep: { height: StyleSheet.hairlineWidth, backgroundColor: C.border },
 
   // ── Modals ──
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },

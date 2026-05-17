@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TASKS_KEY = 'adhd_tasks_v1';
@@ -50,20 +51,17 @@ function motivationFor(ratio: number, done: number): string {
 }
 
 export default function HomeScreen() {
+  const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
   const [loaded, setLoaded] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
 
-  // Load persisted tasks on mount
   useEffect(() => {
     AsyncStorage.getItem(TASKS_KEY)
-      .then(raw => {
-        if (raw) setTasks(JSON.parse(raw));
-      })
+      .then(raw => { if (raw) setTasks(JSON.parse(raw)); })
       .finally(() => setLoaded(true));
   }, []);
 
-  // Persist tasks whenever they change (only after initial load)
   useEffect(() => {
     if (!loaded) return;
     AsyncStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
@@ -87,10 +85,7 @@ export default function HomeScreen() {
   };
 
   const raw = new Date().toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
   const dateStr = raw.charAt(0).toUpperCase() + raw.slice(1);
 
@@ -100,26 +95,39 @@ export default function HomeScreen() {
   });
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar style="dark" />
+
+      {/* Fixed header */}
+      <View style={styles.header}>
+        <Text style={styles.logo}>ADHD<Text style={styles.logoAccent}>Progress</Text></Text>
+      </View>
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}>
 
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.greeting}>Bonjour Aron 👋</Text>
+        {/* Greeting */}
+        <View style={styles.greeting}>
+          <Text style={styles.greetingText}>Bonjour Aron 👋</Text>
           <Text style={styles.date}>{dateStr}</Text>
         </View>
+
+        {/* Routine button */}
+        <TouchableOpacity
+          style={styles.routineBtn}
+          onPress={() => router.push('/routine')}
+          activeOpacity={0.85}>
+          <Text style={styles.routineBtnText}>Ma routine adaptée</Text>
+          <Text style={styles.routineBtnArrow}>→</Text>
+        </TouchableOpacity>
 
         {/* Progress card */}
         <View style={styles.progressCard}>
           <View style={styles.progressRow}>
             <Text style={styles.progressLabel}>Progression du jour</Text>
-            <Text style={styles.progressCount}>
-              {completedCount}/{total}
-            </Text>
+            <Text style={styles.progressCount}>{completedCount}/{total}</Text>
           </View>
           <View style={styles.barBg}>
             <Animated.View style={[styles.barFill, { width: barWidth }]} />
@@ -148,7 +156,6 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        {/* Footer hint */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
             {completedCount > 0
@@ -162,29 +169,62 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: C.bg,
-  },
-  scroll: { flex: 1 },
-  container: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 48,
-  },
+  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+  scroll: { flex: 1, backgroundColor: C.bg },
+  container: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 48 },
 
-  // Header
-  header: { marginBottom: 28 },
-  greeting: {
-    fontSize: 32,
+  // Fixed header
+  header: {
+    height: 52,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  logo: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: C.text,
+    letterSpacing: -0.3,
+  },
+  logoAccent: { color: C.primary },
+
+  // Greeting
+  greeting: { marginBottom: 20 },
+  greetingText: {
+    fontSize: 30,
     fontWeight: '800',
     color: C.text,
     letterSpacing: -0.5,
   },
-  date: {
-    fontSize: 15,
-    color: C.textSub,
-    marginTop: 4,
+  date: { fontSize: 15, color: C.textSub, marginTop: 4 },
+
+  // Routine button
+  routineBtn: {
+    backgroundColor: C.primary,
+    borderRadius: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+    shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  routineBtnText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  routineBtnArrow: {
+    fontSize: 20,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '600',
   },
 
   // Progress card
@@ -205,16 +245,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  progressLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.85)',
-  },
-  progressCount: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
+  progressLabel: { fontSize: 16, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
+  progressCount: { fontSize: 22, fontWeight: '800', color: '#FFFFFF' },
   barBg: {
     height: 10,
     backgroundColor: 'rgba(255,255,255,0.25)',
@@ -222,29 +254,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 12,
   },
-  barFill: {
-    height: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-  },
-  progressPct: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
-    marginBottom: 6,
-  },
-  motivation: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
+  barFill: { height: '100%', backgroundColor: '#FFFFFF', borderRadius: 8 },
+  progressPct: { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 6 },
+  motivation: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
 
   // Tasks
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: C.text,
-    marginBottom: 16,
-  },
+  sectionTitle: { fontSize: 20, fontWeight: '700', color: C.text, marginBottom: 16 },
   taskList: { gap: 12 },
   taskItem: {
     flexDirection: 'row',
@@ -260,11 +275,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: C.border,
   },
-  taskItemDone: {
-    backgroundColor: '#FAFAF8',
-    borderColor: '#EBEBEB',
-    opacity: 0.72,
-  },
+  taskItemDone: { backgroundColor: '#FAFAF8', borderColor: '#EBEBEB', opacity: 0.72 },
   checkbox: {
     width: 24,
     height: 24,
@@ -275,38 +286,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  checkboxDone: {
-    backgroundColor: C.primary,
-    borderColor: C.primary,
-  },
-  checkmark: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  taskEmoji: {
-    fontSize: 20,
-    marginRight: 12,
-  },
-  taskTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '500',
-    color: C.text,
-  },
-  taskTitleDone: {
-    color: C.textMuted,
-    textDecorationLine: 'line-through',
-  },
+  checkboxDone: { backgroundColor: C.primary, borderColor: C.primary },
+  checkmark: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  taskEmoji: { fontSize: 20, marginRight: 12 },
+  taskTitle: { flex: 1, fontSize: 16, fontWeight: '500', color: C.text },
+  taskTitleDone: { color: C.textMuted, textDecorationLine: 'line-through' },
 
   // Footer
-  footer: {
-    alignItems: 'center',
-    marginTop: 32,
-  },
-  footerText: {
-    fontSize: 14,
-    color: C.textSub,
-    textAlign: 'center',
-  },
+  footer: { alignItems: 'center', marginTop: 32 },
+  footerText: { fontSize: 14, color: C.textSub, textAlign: 'center' },
 });

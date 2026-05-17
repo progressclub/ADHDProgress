@@ -14,6 +14,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TASKS_KEY = 'adhd_tasks_v1';
 const OBJECTIF_KEY = 'adhd_objectif_v1';
+const PROGRAMME_WEEK_KEY = 'adhd_programme_week_v1';
+const BANNER_DISMISSED_KEY = 'adhd_banner_dismissed_week_v1';
 const DEFAULT_OBJECTIF = "Moins d'écran";
 
 interface Task {
@@ -52,9 +54,25 @@ function motivationFor(ratio: number, done: number): string {
   return 'Incroyable ! Toutes les tâches complétées ! 🎉';
 }
 
-function isSundayEvening(): boolean {
+// Returns the ISO week identifier, e.g. "2026-W20"
+function getWeekId(): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${d.getFullYear()}-W${week}`;
+}
+
+function shouldShowBanner(programmeWeek: string | null, dismissedWeek: string | null): boolean {
+  const current = getWeekId();
+  if (dismissedWeek === current) return false;
   const now = new Date();
-  return now.getDay() === 0 && now.getHours() >= 18;
+  const day = now.getDay();
+  const hour = now.getHours();
+  if (day === 0 && hour >= 18) return true;               // Sunday after 18h
+  if (day === 1 && programmeWeek !== current) return true; // Monday without programme
+  return false;
 }
 
 export default function HomeScreen() {
@@ -75,12 +93,18 @@ export default function HomeScreen() {
   // Reload objective + recheck banner every time screen is focused
   useFocusEffect(
     useCallback(() => {
-      AsyncStorage.getItem(OBJECTIF_KEY).then(val => {
-        setObjectif(val ?? DEFAULT_OBJECTIF);
-      });
-      setShowProgrammeBanner(isSundayEvening());
+      AsyncStorage.multiGet([OBJECTIF_KEY, PROGRAMME_WEEK_KEY, BANNER_DISMISSED_KEY])
+        .then(([[, obj], [, progWeek], [, dismissedWeek]]) => {
+          setObjectif(obj ?? DEFAULT_OBJECTIF);
+          setShowProgrammeBanner(shouldShowBanner(progWeek, dismissedWeek));
+        });
     }, [])
   );
+
+  const dismissBanner = () => {
+    setShowProgrammeBanner(false);
+    AsyncStorage.setItem(BANNER_DISMISSED_KEY, getWeekId());
+  };
 
   // Persist tasks on change
   useEffect(() => {
@@ -135,20 +159,26 @@ export default function HomeScreen() {
           <Text style={styles.date}>{dateStr}</Text>
         </View>
 
-        {/* Sunday-evening programme banner */}
+        {/* Programme banner (Sunday evening or Monday without choice) */}
         {showProgrammeBanner && (
-          <TouchableOpacity
-            style={styles.programmeBanner}
-            onPress={() => router.push('/programme')}
-            activeOpacity={0.85}>
-            <View style={styles.programmeBannerLeft}>
+          <View style={styles.programmeBanner}>
+            <TouchableOpacity
+              style={styles.programmeBannerMain}
+              onPress={() => router.push('/programme')}
+              activeOpacity={0.85}>
               <Text style={styles.programmeBannerEmoji}>📅</Text>
               <Text style={styles.programmeBannerText}>
                 Je choisis mon programme de la semaine
               </Text>
-            </View>
-            <Text style={styles.programmeBannerArrow}>→</Text>
-          </TouchableOpacity>
+              <Text style={styles.programmeBannerArrow}>→</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.bannerClose}
+              onPress={dismissBanner}
+              hitSlop={8}>
+              <Text style={styles.bannerCloseText}>×</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {/* Routine button */}
@@ -231,20 +261,26 @@ const styles = StyleSheet.create({
   greetingText: { fontSize: 30, fontWeight: '800', color: C.text, letterSpacing: -0.5 },
   date: { fontSize: 15, color: C.textSub, marginTop: 4 },
 
-  // Programme banner (Sunday evening)
+  // Programme banner
   programmeBanner: {
-    backgroundColor: '#FFF7ED',
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    backgroundColor: '#FFF7ED',
+    borderRadius: 14,
     marginBottom: 12,
     borderWidth: 1.5,
     borderColor: '#FED7AA',
+    overflow: 'hidden',
   },
-  programmeBannerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 },
+  programmeBannerMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingLeft: 16,
+    paddingRight: 10,
+    gap: 10,
+  },
   programmeBannerEmoji: { fontSize: 20 },
   programmeBannerText: {
     flex: 1,
@@ -253,7 +289,16 @@ const styles = StyleSheet.create({
     color: '#92400E',
     lineHeight: 20,
   },
-  programmeBannerArrow: { fontSize: 18, color: '#D97706', fontWeight: '700' },
+  programmeBannerArrow: { fontSize: 17, color: '#D97706', fontWeight: '700' },
+  bannerClose: {
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: '#FED7AA',
+  },
+  bannerCloseText: { fontSize: 20, color: '#D97706', fontWeight: '500', lineHeight: 22 },
 
   // Routine button
   routineBtn: {

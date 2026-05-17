@@ -11,6 +11,16 @@ import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const OBJECTIF_KEY = 'adhd_objectif_v1';
+const PROGRAMME_WEEK_KEY = 'adhd_programme_week_v1';
+
+function getWeekId(): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${d.getFullYear()}-W${week}`;
+}
 
 const C = {
   bg: '#F5F3FF',
@@ -85,7 +95,11 @@ export default function ProgrammeScreen() {
   const handleConfirm = async () => {
     if (!selected) return;
     const prog = PROGRAMMES.find(p => p.id === selected)!;
-    await AsyncStorage.setItem(OBJECTIF_KEY, prog.objectif);
+    const weekId = getWeekId();
+    await AsyncStorage.multiSet([
+      [OBJECTIF_KEY, prog.objectif],
+      [PROGRAMME_WEEK_KEY, weekId],
+    ]);
     router.back();
   };
 

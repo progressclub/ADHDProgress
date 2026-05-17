@@ -230,6 +230,8 @@ export default function TachesScreen() {
   const [savedTasks, setSavedTasks] = useState<SavedTask[]>([]);
   const [customCats, setCustomCats] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [groupByCategory, setGroupByCategory] = useState(false);
+  const [expandedCats, setExpandedCats] = useState<string[]>([]);
 
   // ── "Add to day" modal state ──
   const [addModalVisible, setAddModalVisible] = useState(false);
@@ -344,8 +346,15 @@ export default function TachesScreen() {
 
   const canSave = saveTitle.trim().length > 0;
 
+  const toggleAccordion = (cat: string) =>
+    setExpandedCats(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
+
   // ── Grouped saved tasks ──
   const groups = buildGroups(savedTasks, searchQuery, customCats);
+
+  const q = searchQuery.toLowerCase().trim();
+  const flatSorted = (q ? savedTasks.filter(t => t.title.toLowerCase().includes(q)) : [...savedTasks])
+    .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
 
   const allCatsForModal = [...PREDEFINED_CATEGORIES, ...customCats];
 
@@ -415,6 +424,14 @@ export default function TachesScreen() {
           {/* Header */}
           <View style={styles.savedHeader}>
             <Text style={styles.savedHeaderTitle}>Mes tâches enregistrées</Text>
+            <TouchableOpacity
+              style={[styles.groupByBtn, groupByCategory && styles.groupByBtnActive]}
+              onPress={() => setGroupByCategory(prev => !prev)}
+              activeOpacity={0.75}>
+              <Text style={[styles.groupByBtnText, groupByCategory && styles.groupByBtnTextActive]}>
+                Par catégories
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.divider} />
@@ -429,6 +446,7 @@ export default function TachesScreen() {
               value={searchQuery}
               onChangeText={setSearchQuery}
               returnKeyType="search"
+              autoCapitalize="none"
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={8}>
@@ -437,26 +455,17 @@ export default function TachesScreen() {
             )}
           </View>
 
-          {groups.length === 0 && (
-            <Text style={styles.emptyText}>
-              {savedTasks.length === 0
-                ? 'Aucune tâche enregistrée. Appuie sur "Enregistrer une tâche +"'
-                : 'Aucun résultat pour cette recherche'}
-            </Text>
-          )}
-
-          {/* Grouped sections */}
-          {groups.map((section, si) => (
-            <View key={section.category}>
-              {/* Section header */}
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>{section.category}</Text>
-                <View style={styles.sectionCount}>
-                  <Text style={styles.sectionCountText}>{section.tasks.length}</Text>
-                </View>
-              </View>
-
-              {section.tasks.map((saved, idx) => (
+          {/* ── Flat view (default) ── */}
+          {!groupByCategory && (
+            <>
+              {flatSorted.length === 0 && (
+                <Text style={styles.emptyText}>
+                  {savedTasks.length === 0
+                    ? 'Aucune tâche enregistrée. Appuie sur "Enregistrer une tâche +"'
+                    : 'Aucun résultat pour cette recherche'}
+                </Text>
+              )}
+              {flatSorted.map((saved, idx) => (
                 <React.Fragment key={saved.id}>
                   <View style={styles.savedRow}>
                     <Text style={styles.savedTaskTitle} numberOfLines={1}>{saved.title}</Text>
@@ -467,15 +476,61 @@ export default function TachesScreen() {
                       <Text style={styles.addToDayIcon}>+</Text>
                     </TouchableOpacity>
                   </View>
-                  {idx < section.tasks.length - 1 && (
+                  {idx < flatSorted.length - 1 && (
                     <View style={[styles.rowDivider, { marginLeft: 16 }]} />
                   )}
                 </React.Fragment>
               ))}
+            </>
+          )}
 
-              {si < groups.length - 1 && <View style={styles.divider} />}
-            </View>
-          ))}
+          {/* ── Accordion / category view ── */}
+          {groupByCategory && (
+            <>
+              {groups.length === 0 && (
+                <Text style={styles.emptyText}>
+                  {savedTasks.length === 0
+                    ? 'Aucune tâche enregistrée. Appuie sur "Enregistrer une tâche +"'
+                    : 'Aucun résultat pour cette recherche'}
+                </Text>
+              )}
+              {groups.map((section, si) => {
+                const isOpen = expandedCats.includes(section.category);
+                return (
+                  <View key={section.category}>
+                    <TouchableOpacity
+                      style={styles.accordionHeader}
+                      onPress={() => toggleAccordion(section.category)}
+                      activeOpacity={0.75}>
+                      <Text style={styles.accordionTitle}>{section.category}</Text>
+                      <Text style={styles.accordionChevron}>{isOpen ? '▾' : '▸'}</Text>
+                    </TouchableOpacity>
+                    {isOpen && (
+                      <>
+                        {section.tasks.map((saved, idx) => (
+                          <React.Fragment key={saved.id}>
+                            <View style={styles.savedRow}>
+                              <Text style={styles.savedTaskTitle} numberOfLines={1}>{saved.title}</Text>
+                              <TouchableOpacity
+                                style={styles.addToDayBtn}
+                                onPress={() => addSavedToDay(saved)}
+                                activeOpacity={0.75}>
+                                <Text style={styles.addToDayIcon}>+</Text>
+                              </TouchableOpacity>
+                            </View>
+                            {idx < section.tasks.length - 1 && (
+                              <View style={[styles.rowDivider, { marginLeft: 16 }]} />
+                            )}
+                          </React.Fragment>
+                        ))}
+                      </>
+                    )}
+                    {si < groups.length - 1 && <View style={styles.divider} />}
+                  </View>
+                );
+              })}
+            </>
+          )}
         </View>
 
         <View style={{ height: 48 }} />
@@ -499,6 +554,7 @@ export default function TachesScreen() {
               value={addTitle}
               onChangeText={setAddTitle}
               autoFocus
+              autoCapitalize="sentences"
               returnKeyType="done"
             />
 
@@ -533,6 +589,7 @@ export default function TachesScreen() {
                 placeholderTextColor={C.textMuted}
                 value={deadlineTime}
                 onChangeText={setDeadlineTime}
+                autoCapitalize="none"
                 returnKeyType="done"
               />
             )}
@@ -566,6 +623,7 @@ export default function TachesScreen() {
               value={saveTitle}
               onChangeText={setSaveTitle}
               autoFocus
+              autoCapitalize="sentences"
               returnKeyType="done"
             />
 
@@ -627,6 +685,7 @@ export default function TachesScreen() {
                       onChangeText={setNewCatName}
                       returnKeyType="done"
                       onSubmitEditing={confirmNewCat}
+                      autoCapitalize="sentences"
                       autoFocus
                     />
                     <TouchableOpacity
@@ -725,8 +784,24 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, color: C.textMuted, textAlign: 'center', paddingVertical: 24, paddingHorizontal: 16 },
 
   // ── Saved tasks card ──
-  savedHeader: { paddingVertical: 14, paddingHorizontal: 16 },
-  savedHeaderTitle: { fontSize: 16, fontWeight: '700', color: C.text },
+  savedHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, gap: 10 },
+  savedHeaderTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: C.text },
+  groupByBtn: {
+    paddingHorizontal: 11, paddingVertical: 6, borderRadius: 10,
+    borderWidth: 1.5, borderColor: C.border, backgroundColor: '#F9F8FF',
+  },
+  groupByBtnActive: { borderColor: C.primary, backgroundColor: C.primaryLight },
+  groupByBtnText: { fontSize: 12, fontWeight: '600', color: C.textSub },
+  groupByBtnTextActive: { color: C.primary },
+
+  // Accordion
+  accordionHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 14, paddingHorizontal: 16, gap: 10,
+    backgroundColor: '#FAFAFA',
+  },
+  accordionTitle: { flex: 1, fontSize: 14, fontWeight: '700', color: C.text },
+  accordionChevron: { fontSize: 14, color: C.primary, fontWeight: '700' },
 
   searchWrap: {
     flexDirection: 'row', alignItems: 'center', margin: 12, paddingHorizontal: 12,
@@ -735,14 +810,6 @@ const styles = StyleSheet.create({
   searchIcon: { fontSize: 14 },
   searchInput: { flex: 1, fontSize: 14, color: C.text, paddingVertical: 10 },
   searchClear: { fontSize: 18, color: C.textMuted, fontWeight: '600', paddingLeft: 4 },
-
-  sectionHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#FAFAFA',
-  },
-  sectionTitle: { flex: 1, fontSize: 12, fontWeight: '700', color: C.textSub, textTransform: 'uppercase', letterSpacing: 0.6 },
-  sectionCount: { backgroundColor: C.primaryLight, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
-  sectionCountText: { fontSize: 11, fontWeight: '700', color: C.primary },
 
   savedRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 16, gap: 12 },
   savedTaskTitle: { flex: 1, fontSize: 15, fontWeight: '500', color: C.text },

@@ -36,6 +36,12 @@ interface DayTask {
   completed: boolean;
 }
 
+interface SavedTask {
+  id: string;
+  title: string;
+  category?: string;
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const C = {
@@ -55,24 +61,25 @@ const PRIORITY_COLOR: Record<Priority, string> = {
   normale: '#F97316',
   basse: '#22C55E',
 };
-
 const PRIORITY_BG: Record<Priority, string> = {
   haute: '#FEF2F2',
   normale: '#FFF7ED',
   basse: '#F0FDF4',
 };
-
 const PRIORITY_LABEL: Record<Priority, string> = {
   haute: 'Haute',
   normale: 'Normale',
   basse: 'Basse',
 };
 
-// Width of the revealed delete zone
 const DELETE_W = 88;
-
-// Spring config: tight enough to feel snappy, gentle enough to feel natural
 const SPRING = { damping: 20, stiffness: 220, mass: 0.9 };
+
+const PREDEFINED_CATEGORIES = ['Ma routine du matin', 'Ma routine du soir'];
+
+const DAY_TASKS_PREFIX = 'adhd_day_tasks_';
+const SAVED_TASKS_KEY = 'adhd_saved_tasks_v1';
+const CUSTOM_CATS_KEY = 'adhd_custom_categories_v1';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -82,40 +89,60 @@ function toISO(date: Date): string {
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
-
 function storageKey(date: Date): string {
-  return `adhd_day_tasks_${toISO(date)}`;
+  return `${DAY_TASKS_PREFIX}${toISO(date)}`;
 }
-
 function formatDay(date: Date): string {
   const raw = date.toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
+    weekday: 'long', day: 'numeric', month: 'long',
   });
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
-
 function shiftDay(date: Date, n: number): Date {
   const d = new Date(date);
   d.setDate(d.getDate() + n);
   return d;
 }
-
 function isToday(date: Date): boolean {
   return toISO(date) === toISO(new Date());
 }
 
+type GroupedSection = { category: string; tasks: SavedTask[] };
+
+function buildGroups(
+  saved: SavedTask[],
+  query: string,
+  customCats: string[],
+): GroupedSection[] {
+  const q = query.toLowerCase().trim();
+  const filtered = q ? saved.filter(t => t.title.toLowerCase().includes(q)) : saved;
+
+  // Ordered categories: predefined → custom → any orphaned → Autres
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const cat of [...PREDEFINED_CATEGORIES, ...customCats]) {
+    if (!seen.has(cat)) { seen.add(cat); ordered.push(cat); }
+  }
+  for (const t of filtered) {
+    if (t.category && !seen.has(t.category)) {
+      seen.add(t.category); ordered.push(t.category);
+    }
+  }
+  ordered.push('Autres');
+
+  const groups = new Map<string, SavedTask[]>();
+  for (const t of filtered) {
+    const cat = t.category ?? 'Autres';
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat)!.push(t);
+  }
+
+  return ordered
+    .filter(cat => groups.has(cat))
+    .map(cat => ({ category: cat, tasks: groups.get(cat)! }));
+}
+
 // ─── SwipeableTaskRow ────────────────────────────────────────────────────────
-//
-// Layout principle (mimics iOS Mail):
-//   ┌─────────────────────────────────────────┐  ← container, overflow:hidden
-//   │  [DELETE BUTTON — absolute right: 0   ] │  ← always rendered, behind
-//   │  [     WHITE ROW — slides left        ] │  ← covers delete, moves on swipe
-//   └─────────────────────────────────────────┘
-//
-// As the row slides left by DELETE_W, it progressively exposes the red zone.
-// On release: springs to -DELETE_W (open) or 0 (closed) depending on velocity/distance.
 
 interface RowProps {
   task: DayTask;
@@ -127,61 +154,37 @@ function SwipeableTaskRow({ task, onToggle, onDelete }: RowProps) {
   const x = useSharedValue(0);
 
   const pan = Gesture.Pan()
-    // Only activate for clearly horizontal movement
     .activeOffsetX([-8, 8])
     .failOffsetY([-14, 14])
     .onUpdate(e => {
-      // Allow only left swipe, capped at DELETE_W
       x.value = Math.max(-DELETE_W, Math.min(0, e.translationX));
     })
     .onEnd(e => {
-      const pastHalf = x.value < -(DELETE_W / 2);
-      const fastSwipe = e.velocityX < -600;
-      x.value = withSpring(pastHalf || fastSwipe ? -DELETE_W : 0, SPRING);
+      const open = x.value < -(DELETE_W / 2) || e.velocityX < -600;
+      x.value = withSpring(open ? -DELETE_W : 0, SPRING);
     });
 
-  // The white row slides left, revealing the red zone underneath
   const rowStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: x.value }],
   }));
-
-  // The "Supprimer" text fades in progressively as the row opens
   const textStyle = useAnimatedStyle(() => ({
     opacity: interpolate(-x.value, [0, DELETE_W * 0.5, DELETE_W], [0, 0.5, 1], Extrapolation.CLAMP),
-    transform: [
-      {
-        translateX: interpolate(
-          -x.value,
-          [0, DELETE_W],
-          [10, 0],
-          Extrapolation.CLAMP,
-        ),
-      },
-    ],
+    transform: [{ translateX: interpolate(-x.value, [0, DELETE_W], [10, 0], Extrapolation.CLAMP) }],
   }));
 
-  // Tapping an open row closes it before toggling
   const handleRowPress = () => {
-    if (x.value < 0) {
-      x.value = withSpring(0, SPRING);
-    }
+    if (x.value < 0) x.value = withSpring(0, SPRING);
     onToggle(task.id);
   };
 
   return (
     <GestureDetector gesture={pan}>
       <View style={styles.swipeContainer}>
-        {/* ── Delete zone — always behind the white row ── */}
         <View style={styles.deleteZone}>
-          <TouchableOpacity
-            style={styles.deleteInner}
-            onPress={() => onDelete(task.id)}
-            activeOpacity={0.85}>
+          <TouchableOpacity style={styles.deleteInner} onPress={() => onDelete(task.id)} activeOpacity={0.85}>
             <Animated.Text style={[styles.deleteText, textStyle]}>Supprimer</Animated.Text>
           </TouchableOpacity>
         </View>
-
-        {/* ── White row — slides left to reveal delete zone ── */}
         <Animated.View style={[styles.taskRowWrap, rowStyle]}>
           <TouchableOpacity style={styles.taskRow} onPress={handleRowPress} activeOpacity={0.7}>
             <View style={[styles.checkbox, task.completed && styles.checkboxDone]}>
@@ -209,22 +212,48 @@ function SwipeableTaskRow({ task, onToggle, onDelete }: RowProps) {
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
 export default function TachesScreen() {
+  // ── Day tasks ──
   const [currentDate, setCurrentDate] = useState(new Date());
   const [tasks, setTasks] = useState<DayTask[]>([]);
 
-  const [modalVisible, setModalVisible] = useState(false);
-  const [title, setTitle] = useState('');
-  const [priority, setPriority] = useState<Priority>('normale');
+  // ── Saved tasks ──
+  const [savedTasks, setSavedTasks] = useState<SavedTask[]>([]);
+  const [customCats, setCustomCats] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // ── "Add to day" modal state ──
+  const [addModalVisible, setAddModalVisible] = useState(false);
+  const [addTitle, setAddTitle] = useState('');
+  const [addPriority, setAddPriority] = useState<Priority>('normale');
   const [deadlineEnabled, setDeadlineEnabled] = useState(false);
   const [deadlineTime, setDeadlineTime] = useState('');
 
+  // ── "Save task" modal state ──
+  const [saveModalVisible, setSaveModalVisible] = useState(false);
+  const [saveTitle, setSaveTitle] = useState('');
+  const [catEnabled, setCatEnabled] = useState(false);
+  const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  const [creatingCat, setCreatingCat] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+
+  // Load day tasks
   useEffect(() => {
     AsyncStorage.getItem(storageKey(currentDate)).then(raw => {
       setTasks(raw ? JSON.parse(raw) : []);
     });
   }, [currentDate]);
 
-  const persistTasks = useCallback(
+  // Load saved tasks + categories once
+  useEffect(() => {
+    AsyncStorage.multiGet([SAVED_TASKS_KEY, CUSTOM_CATS_KEY]).then(
+      ([[, st], [, cc]]) => {
+        if (st) setSavedTasks(JSON.parse(st));
+        if (cc) setCustomCats(JSON.parse(cc));
+      },
+    );
+  }, []);
+
+  const persistDayTasks = useCallback(
     (next: DayTask[]) => {
       setTasks(next);
       AsyncStorage.setItem(storageKey(currentDate), JSON.stringify(next));
@@ -232,45 +261,118 @@ export default function TachesScreen() {
     [currentDate],
   );
 
-  const toggleTask = (id: string) =>
-    persistTasks(tasks.map(t => (t.id === id ? { ...t, completed: !t.completed } : t)));
-
-  const deleteTask = (id: string) =>
-    persistTasks(tasks.filter(t => t.id !== id));
-
-  const openModal = () => {
-    setTitle('');
-    setPriority('normale');
-    setDeadlineEnabled(false);
-    setDeadlineTime('');
-    setModalVisible(true);
+  const persistSavedTasks = (next: SavedTask[]) => {
+    setSavedTasks(next);
+    AsyncStorage.setItem(SAVED_TASKS_KEY, JSON.stringify(next));
+  };
+  const persistCustomCats = (next: string[]) => {
+    setCustomCats(next);
+    AsyncStorage.setItem(CUSTOM_CATS_KEY, JSON.stringify(next));
   };
 
-  const addTask = () => {
-    const trimmed = title.trim();
+  // ── Day task handlers ──
+  const toggleTask = (id: string) =>
+    persistDayTasks(tasks.map(t => (t.id === id ? { ...t, completed: !t.completed } : t)));
+  const deleteTask = (id: string) =>
+    persistDayTasks(tasks.filter(t => t.id !== id));
+
+  const openAddModal = () => {
+    setAddTitle(''); setAddPriority('normale');
+    setDeadlineEnabled(false); setDeadlineTime('');
+    setAddModalVisible(true);
+  };
+  const confirmAddTask = () => {
+    const trimmed = addTitle.trim();
     if (!trimmed) return;
-    persistTasks([
+    persistDayTasks([
       ...tasks,
       {
-        id: Date.now().toString(),
-        title: trimmed,
-        priority,
+        id: Date.now().toString(), title: trimmed, priority: addPriority,
         deadline: deadlineEnabled && deadlineTime.trim() ? deadlineTime.trim() : undefined,
         completed: false,
       },
     ]);
-    setModalVisible(false);
+    setAddModalVisible(false);
   };
+
+  // Add a saved task to the current day
+  const addSavedToDay = (saved: SavedTask) => {
+    persistDayTasks([
+      ...tasks,
+      { id: Date.now().toString(), title: saved.title, priority: 'normale', completed: false },
+    ]);
+  };
+
+  // ── Save task handlers ──
+  const openSaveModal = () => {
+    setSaveTitle(''); setCatEnabled(false);
+    setSelectedCat(null); setCreatingCat(false); setNewCatName('');
+    setSaveModalVisible(true);
+  };
+
+  const selectCatItem = (cat: string | null, isNew = false) => {
+    setSelectedCat(cat);
+    setCreatingCat(isNew);
+    if (!isNew) setNewCatName('');
+  };
+
+  const confirmSaveTask = () => {
+    const trimmed = saveTitle.trim();
+    if (!trimmed) return;
+
+    let category: string | undefined;
+    let updatedCats = customCats;
+
+    if (catEnabled) {
+      if (creatingCat) {
+        const newCat = newCatName.trim();
+        if (!newCat) return;
+        if (!customCats.includes(newCat)) {
+          updatedCats = [...customCats, newCat];
+          persistCustomCats(updatedCats);
+        }
+        category = newCat;
+      } else if (selectedCat) {
+        category = selectedCat;
+      }
+    }
+
+    persistSavedTasks([
+      ...savedTasks,
+      { id: Date.now().toString(), title: trimmed, category },
+    ]);
+    setSaveModalVisible(false);
+  };
+
+  const canSave =
+    saveTitle.trim().length > 0 &&
+    !(catEnabled && creatingCat && !newCatName.trim());
+
+  // ── Grouped saved tasks ──
+  const groups = buildGroups(savedTasks, searchQuery, customCats);
+
+  const allCatsForModal = [...PREDEFINED_CATEGORIES, ...customCats];
+
+  // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
-        <Text style={styles.pageTitle}>Mes tâches</Text>
+        {/* Page header */}
+        <View style={styles.pageHeader}>
+          <Text style={styles.pageTitle}>Mes tâches</Text>
+          <TouchableOpacity style={styles.saveBtn} onPress={openSaveModal} activeOpacity={0.85}>
+            <Text style={styles.saveBtnText}>Enregistrer une tâche +</Text>
+          </TouchableOpacity>
+        </View>
 
+        {/* ════════════════════════════════════════════════
+            CARD 1 — Tasks of the day
+        ════════════════════════════════════════════════ */}
         <View style={styles.card}>
-          {/* ── Date navigation ── */}
+          {/* Date navigation */}
           <View style={styles.dateBar}>
             <TouchableOpacity style={styles.arrowBtn} onPress={() => setCurrentDate(d => shiftDay(d, -1))} hitSlop={8}>
               <Text style={styles.arrowText}>←</Text>
@@ -290,15 +392,14 @@ export default function TachesScreen() {
 
           <View style={styles.divider} />
 
-          {/* ── Add row ── */}
-          <TouchableOpacity style={styles.addRow} onPress={openModal} activeOpacity={0.7}>
+          {/* Add row */}
+          <TouchableOpacity style={styles.addRow} onPress={openAddModal} activeOpacity={0.7}>
             <Text style={styles.addRowText}>Ajouter une nouvelle tâche</Text>
             <View style={styles.addIconWrap}>
               <Text style={styles.addIcon}>+</Text>
             </View>
           </TouchableOpacity>
 
-          {/* ── Task list ── */}
           {tasks.length > 0 && <View style={styles.divider} />}
           {tasks.map((task, idx) => (
             <React.Fragment key={task.id}>
@@ -306,17 +407,90 @@ export default function TachesScreen() {
               {idx < tasks.length - 1 && <View style={styles.rowDivider} />}
             </React.Fragment>
           ))}
-
           {tasks.length === 0 && (
             <Text style={styles.emptyText}>Aucune tâche pour ce jour</Text>
           )}
         </View>
+
+        {/* ════════════════════════════════════════════════
+            CARD 2 — Saved tasks library
+        ════════════════════════════════════════════════ */}
+        <View style={[styles.card, { marginTop: 20 }]}>
+          {/* Header */}
+          <View style={styles.savedHeader}>
+            <Text style={styles.savedHeaderTitle}>Mes tâches enregistrées</Text>
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Search */}
+          <View style={styles.searchWrap}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Rechercher une tâche..."
+              placeholderTextColor={C.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={8}>
+                <Text style={styles.searchClear}>×</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {groups.length === 0 && (
+            <Text style={styles.emptyText}>
+              {savedTasks.length === 0
+                ? 'Aucune tâche enregistrée. Appuie sur "Enregistrer une tâche +"'
+                : 'Aucun résultat pour cette recherche'}
+            </Text>
+          )}
+
+          {/* Grouped sections */}
+          {groups.map((section, si) => (
+            <View key={section.category}>
+              {/* Section header */}
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>{section.category}</Text>
+                <View style={styles.sectionCount}>
+                  <Text style={styles.sectionCountText}>{section.tasks.length}</Text>
+                </View>
+              </View>
+
+              {section.tasks.map((saved, idx) => (
+                <React.Fragment key={saved.id}>
+                  <View style={styles.savedRow}>
+                    <Text style={styles.savedTaskTitle} numberOfLines={1}>{saved.title}</Text>
+                    <TouchableOpacity
+                      style={styles.addToDayBtn}
+                      onPress={() => addSavedToDay(saved)}
+                      activeOpacity={0.75}>
+                      <Text style={styles.addToDayIcon}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {idx < section.tasks.length - 1 && (
+                    <View style={[styles.rowDivider, { marginLeft: 16 }]} />
+                  )}
+                </React.Fragment>
+              ))}
+
+              {si < groups.length - 1 && <View style={styles.divider} />}
+            </View>
+          ))}
+        </View>
+
+        <View style={{ height: 48 }} />
       </ScrollView>
 
-      {/* ── Add task modal ── */}
-      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
+      {/* ════════════════════════════════════════════════
+          MODAL — Add task to current day
+      ════════════════════════════════════════════════ */}
+      <Modal visible={addModalVisible} animationType="slide" transparent onRequestClose={() => setAddModalVisible(false)}>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalVisible(false)} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setAddModalVisible(false)} />
           <View style={styles.sheet}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Nouvelle tâche</Text>
@@ -326,8 +500,8 @@ export default function TachesScreen() {
               style={styles.input}
               placeholder="Ex : Appeler le médecin"
               placeholderTextColor={C.textMuted}
-              value={title}
-              onChangeText={setTitle}
+              value={addTitle}
+              onChangeText={setAddTitle}
               autoFocus
               returnKeyType="done"
             />
@@ -337,17 +511,17 @@ export default function TachesScreen() {
               {(['haute', 'normale', 'basse'] as Priority[]).map(p => (
                 <TouchableOpacity
                   key={p}
-                  style={[styles.priorityBtn, { borderColor: PRIORITY_COLOR[p] }, priority === p && { backgroundColor: PRIORITY_COLOR[p] }]}
-                  onPress={() => setPriority(p)}
+                  style={[styles.priorityBtn, { borderColor: PRIORITY_COLOR[p] }, addPriority === p && { backgroundColor: PRIORITY_COLOR[p] }]}
+                  onPress={() => setAddPriority(p)}
                   activeOpacity={0.75}>
-                  <Text style={[styles.priorityBtnText, { color: priority === p ? '#FFFFFF' : PRIORITY_COLOR[p] }]}>
+                  <Text style={[styles.priorityBtnText, { color: addPriority === p ? '#FFFFFF' : PRIORITY_COLOR[p] }]}>
                     {PRIORITY_LABEL[p]}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <View style={styles.deadlineRow}>
+            <View style={styles.toggleRow}>
               <Text style={styles.fieldLabel}>Deadline</Text>
               <Switch
                 value={deadlineEnabled}
@@ -358,7 +532,7 @@ export default function TachesScreen() {
             </View>
             {deadlineEnabled && (
               <TextInput
-                style={[styles.input, styles.inputTime]}
+                style={[styles.input, { marginBottom: 0 }]}
                 placeholder="Ex : 18h00"
                 placeholderTextColor={C.textMuted}
                 value={deadlineTime}
@@ -368,11 +542,98 @@ export default function TachesScreen() {
             )}
 
             <TouchableOpacity
-              style={[styles.addBtn, !title.trim() && styles.addBtnDisabled]}
-              onPress={addTask}
-              disabled={!title.trim()}
+              style={[styles.confirmBtn, !addTitle.trim() && styles.confirmBtnDisabled]}
+              onPress={confirmAddTask}
+              disabled={!addTitle.trim()}
               activeOpacity={0.85}>
-              <Text style={styles.addBtnText}>Ajouter</Text>
+              <Text style={styles.confirmBtnText}>Ajouter</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ════════════════════════════════════════════════
+          MODAL — Save task to library
+      ════════════════════════════════════════════════ */}
+      <Modal visible={saveModalVisible} animationType="slide" transparent onRequestClose={() => setSaveModalVisible(false)}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setSaveModalVisible(false)} />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Enregistrer une tâche</Text>
+
+            <Text style={styles.fieldLabel}>Nom de la tâche</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ex : Faire 10 min de yoga"
+              placeholderTextColor={C.textMuted}
+              value={saveTitle}
+              onChangeText={setSaveTitle}
+              autoFocus
+              returnKeyType="done"
+            />
+
+            {/* Category toggle */}
+            <View style={styles.toggleRow}>
+              <Text style={styles.fieldLabel}>Catégorie</Text>
+              <Switch
+                value={catEnabled}
+                onValueChange={v => { setCatEnabled(v); if (!v) { setSelectedCat(null); setCreatingCat(false); setNewCatName(''); } }}
+                trackColor={{ false: '#E5E7EB', true: C.primaryMuted }}
+                thumbColor={catEnabled ? C.primary : '#F9FAFB'}
+              />
+            </View>
+
+            {catEnabled && (
+              <View style={styles.catList}>
+                {allCatsForModal.map(cat => (
+                  <TouchableOpacity
+                    key={cat}
+                    style={styles.catItem}
+                    onPress={() => selectCatItem(cat, false)}
+                    activeOpacity={0.7}>
+                    <View style={[styles.radio, selectedCat === cat && !creatingCat && styles.radioSelected]}>
+                      {selectedCat === cat && !creatingCat && <View style={styles.radioDot} />}
+                    </View>
+                    <Text style={[styles.catItemText, selectedCat === cat && !creatingCat && styles.catItemTextSelected]}>
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+
+                {/* Create new category */}
+                <TouchableOpacity
+                  style={styles.catItem}
+                  onPress={() => selectCatItem(null, true)}
+                  activeOpacity={0.7}>
+                  <View style={[styles.radio, creatingCat && styles.radioSelected]}>
+                    {creatingCat && <View style={styles.radioDot} />}
+                  </View>
+                  <Text style={[styles.catItemText, styles.catItemNew, creatingCat && styles.catItemTextSelected]}>
+                    Créer une nouvelle catégorie
+                  </Text>
+                </TouchableOpacity>
+
+                {creatingCat && (
+                  <TextInput
+                    style={[styles.input, styles.catInput]}
+                    placeholder="Nom de la catégorie"
+                    placeholderTextColor={C.textMuted}
+                    value={newCatName}
+                    onChangeText={setNewCatName}
+                    returnKeyType="done"
+                    autoFocus
+                  />
+                )}
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.confirmBtn, { marginTop: 24 }, !canSave && styles.confirmBtnDisabled]}
+              onPress={confirmSaveTask}
+              disabled={!canSave}
+              activeOpacity={0.85}>
+              <Text style={styles.confirmBtnText}>Enregistrer</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -385,28 +646,29 @@ export default function TachesScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
-  container: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 48 },
+  container: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16 },
 
-  pageTitle: { fontSize: 28, fontWeight: '800', color: C.text, letterSpacing: -0.5, marginBottom: 20 },
-
-  card: {
-    backgroundColor: C.card,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 4,
-    overflow: 'hidden',
+  // Page header
+  pageHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 },
+  pageTitle: { flex: 1, fontSize: 28, fontWeight: '800', color: C.text, letterSpacing: -0.5 },
+  saveBtn: {
+    backgroundColor: C.primary, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12,
+    shadowColor: C.primary, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 3,
   },
+  saveBtnText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
 
+  // Card shared
+  card: {
+    backgroundColor: C.card, borderRadius: 20, borderWidth: 1.5, borderColor: C.border,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12,
+    elevation: 4, overflow: 'hidden',
+  },
+  divider: { height: 1, backgroundColor: C.border },
+  rowDivider: { height: 1, backgroundColor: '#F8F7FF', marginLeft: 56 },
+
+  // Date navigation
   dateBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16,
     backgroundColor: C.primaryLight,
   },
   arrowBtn: {
@@ -419,49 +681,21 @@ const styles = StyleSheet.create({
   todayBadge: { backgroundColor: C.primary, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
   todayBadgeText: { fontSize: 11, fontWeight: '600', color: '#FFFFFF' },
 
-  divider: { height: 1, backgroundColor: C.border },
-  rowDivider: { height: 1, backgroundColor: '#F8F7FF', marginLeft: 56 },
-
+  // Add row
   addRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, gap: 12 },
   addRowText: { flex: 1, fontSize: 15, fontWeight: '600', color: C.primary },
   addIconWrap: { width: 28, height: 28, borderRadius: 8, backgroundColor: C.primaryLight, alignItems: 'center', justifyContent: 'center' },
   addIcon: { fontSize: 18, color: C.primary, fontWeight: '700', lineHeight: 22 },
 
-  // ── Swipe-to-delete ──
-  swipeContainer: {
-    overflow: 'hidden', // clips the sliding row on the left edge
-  },
-  deleteZone: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: DELETE_W,
-    backgroundColor: '#EF4444',
-  },
-  deleteInner: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  deleteText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  taskRowWrap: {
-    backgroundColor: C.card, // white bg covers the delete zone when closed
-  },
+  // Swipe-to-delete
+  swipeContainer: { overflow: 'hidden' },
+  deleteZone: { position: 'absolute', right: 0, top: 0, bottom: 0, width: DELETE_W, backgroundColor: '#EF4444' },
+  deleteInner: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  deleteText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
+  taskRowWrap: { backgroundColor: C.card },
 
-  // ── Task row content ──
-  taskRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 10,
-  },
+  // Task row
+  taskRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, gap: 10 },
   checkbox: {
     width: 22, height: 22, borderRadius: 6, borderWidth: 2,
     borderColor: C.primaryMuted, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -477,15 +711,39 @@ const styles = StyleSheet.create({
   priorityBadgeText: { fontSize: 11, fontWeight: '700' },
   emptyText: { fontSize: 14, color: C.textMuted, textAlign: 'center', paddingVertical: 24, paddingHorizontal: 16 },
 
-  // ── Modal ──
+  // ── Saved tasks card ──
+  savedHeader: { paddingVertical: 14, paddingHorizontal: 16 },
+  savedHeaderTitle: { fontSize: 16, fontWeight: '700', color: C.text },
+
+  searchWrap: {
+    flexDirection: 'row', alignItems: 'center', margin: 12, paddingHorizontal: 12,
+    backgroundColor: '#F9F8FF', borderRadius: 12, borderWidth: 1.5, borderColor: C.border, gap: 8,
+  },
+  searchIcon: { fontSize: 14 },
+  searchInput: { flex: 1, fontSize: 14, color: C.text, paddingVertical: 10 },
+  searchClear: { fontSize: 18, color: C.textMuted, fontWeight: '600', paddingLeft: 4 },
+
+  sectionHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#FAFAFA',
+  },
+  sectionTitle: { flex: 1, fontSize: 12, fontWeight: '700', color: C.textSub, textTransform: 'uppercase', letterSpacing: 0.6 },
+  sectionCount: { backgroundColor: C.primaryLight, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
+  sectionCountText: { fontSize: 11, fontWeight: '700', color: C.primary },
+
+  savedRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 16, gap: 12 },
+  savedTaskTitle: { flex: 1, fontSize: 15, fontWeight: '500', color: C.text },
+  addToDayBtn: {
+    width: 28, height: 28, borderRadius: 14, backgroundColor: C.primaryLight,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  addToDayIcon: { fontSize: 18, color: C.primary, fontWeight: '700', lineHeight: 22 },
+
+  // ── Modals ──
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 28,
-    paddingTop: 12,
+    backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 28, paddingTop: 12,
   },
   sheetHandle: { width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
   sheetTitle: { fontSize: 20, fontWeight: '800', color: C.text, marginBottom: 20, letterSpacing: -0.3 },
@@ -495,18 +753,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9F8FF', borderRadius: 12, borderWidth: 1.5, borderColor: C.border,
     paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, color: C.text, marginBottom: 20,
   },
-  inputTime: { marginBottom: 0 },
+
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
 
   priorityRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   priorityBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, alignItems: 'center' },
   priorityBtnText: { fontSize: 13, fontWeight: '700' },
 
-  deadlineRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  // Category list in save modal
+  catList: { marginBottom: 4 },
+  catItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, gap: 12 },
+  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#D1D5DB', alignItems: 'center', justifyContent: 'center' },
+  radioSelected: { borderColor: C.primary },
+  radioDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: C.primary },
+  catItemText: { fontSize: 15, color: C.text, flex: 1 },
+  catItemNew: { color: C.primary, fontWeight: '600' },
+  catItemTextSelected: { fontWeight: '700', color: C.primary },
+  catInput: { marginTop: 8, marginBottom: 4, marginLeft: 32 },
 
-  addBtn: {
-    backgroundColor: C.primary, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 24,
+  confirmBtn: {
+    backgroundColor: C.primary, borderRadius: 14, paddingVertical: 16, alignItems: 'center',
     shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 5,
   },
-  addBtnDisabled: { backgroundColor: C.primaryMuted, shadowOpacity: 0, elevation: 0 },
-  addBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  confirmBtnDisabled: { backgroundColor: C.primaryMuted, shadowOpacity: 0, elevation: 0 },
+  confirmBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
 });

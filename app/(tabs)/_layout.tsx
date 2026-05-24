@@ -50,19 +50,27 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="progression"
+        name="coffre"
         options={{
-          title: 'Progression',
-          tabBarIcon: ({ color }) => <IconSymbol size={26} name="chart.bar.fill" color={color} />,
+          title: 'Coffre',
+          tabBarIcon: ({ color }) => <IconSymbol size={26} name="archivebox.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="progress"
+        options={{
+          title: 'Progress',
+          tabBarIcon: ({ color }) => <IconSymbol size={26} name="star.fill" color={color} />,
         }}
       />
       <Tabs.Screen
         name="coach"
         options={{
-          title: 'Coach IA',
+          title: 'Coach',
           tabBarIcon: ({ color }) => <IconSymbol size={26} name="brain.head.profile" color={color} />,
         }}
       />
+      <Tabs.Screen name="progression" options={{ href: null }} />
       <Tabs.Screen
         name="profil"
         options={{

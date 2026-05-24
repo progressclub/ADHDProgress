@@ -11,28 +11,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useDayTasks } from '@/contexts/DayTasksContext';
 
-const TASKS_KEY = 'adhd_tasks_v1';
 const OBJECTIF_KEY = 'adhd_objectif_v1';
 const PROGRAMME_WEEK_KEY = 'adhd_programme_week_v1';
 const BANNER_DISMISSED_KEY = 'adhd_banner_dismissed_week_v1';
 const DEFAULT_OBJECTIF = "Moins d'écran";
-
-interface Task {
-  id: string;
-  title: string;
-  completed: boolean;
-  emoji: string;
-}
-
-const INITIAL_TASKS: Task[] = [
-  { id: '1', title: 'Méditer 5 minutes', completed: false, emoji: '🧘' },
-  { id: '2', title: 'Prendre mes médicaments', completed: false, emoji: '💊' },
-  { id: '3', title: "Faire 10 min d'exercice", completed: false, emoji: '🏃' },
-  { id: '4', title: "Boire de l'eau (2L)", completed: false, emoji: '💧' },
-  { id: '5', title: 'Pomodoro de 25 minutes', completed: false, emoji: '🍅' },
-  { id: '6', title: 'Ranger mon espace', completed: false, emoji: '✨' },
-];
 
 const C = {
   bg: '#F5F3FF',
@@ -77,18 +61,10 @@ function shouldShowBanner(programmeWeek: string | null, dismissedWeek: string | 
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
-  const [loaded, setLoaded] = useState(false);
+  const { todayTasks, persistTodayTasks } = useDayTasks();
   const [objectif, setObjectif] = useState(DEFAULT_OBJECTIF);
   const [showProgrammeBanner, setShowProgrammeBanner] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
-
-  // Load tasks once on mount
-  useEffect(() => {
-    AsyncStorage.getItem(TASKS_KEY)
-      .then(raw => { if (raw) setTasks(JSON.parse(raw)); })
-      .finally(() => setLoaded(true));
-  }, []);
 
   // Reload objective + recheck banner every time screen is focused
   useFocusEffect(
@@ -106,14 +82,8 @@ export default function HomeScreen() {
     AsyncStorage.setItem(BANNER_DISMISSED_KEY, getWeekId());
   };
 
-  // Persist tasks on change
-  useEffect(() => {
-    if (!loaded) return;
-    AsyncStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
-  }, [tasks, loaded]);
-
-  const completedCount = tasks.filter(t => t.completed).length;
-  const total = tasks.length;
+  const completedCount = todayTasks.filter(t => t.completed).length;
+  const total = todayTasks.length;
   const ratio = total > 0 ? completedCount / total : 0;
 
   useEffect(() => {
@@ -126,8 +96,10 @@ export default function HomeScreen() {
   }, [ratio]);
 
   const toggleTask = (id: string) => {
-    setTasks(prev => prev.map(t => (t.id === id ? { ...t, completed: !t.completed } : t)));
+    persistTodayTasks(todayTasks.map(t => (t.id === id ? { ...t, completed: !t.completed } : t)));
   };
+
+  const pendingTasks = todayTasks.filter(t => !t.completed);
 
   const raw = new Date().toLocaleDateString('fr-FR', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
@@ -206,19 +178,21 @@ export default function HomeScreen() {
         {/* Task list */}
         <Text style={styles.sectionTitle}>Tâches du jour</Text>
         <View style={styles.taskList}>
-          {tasks.map(task => (
+          {pendingTasks.length === 0 && (
+            <Text style={styles.emptyTasks}>
+              {todayTasks.length === 0
+                ? 'Aucune tâche pour aujourd\'hui.\nAjoute-en depuis l\'onglet Tâches !'
+                : 'Toutes les tâches du jour sont complétées 🎉'}
+            </Text>
+          )}
+          {pendingTasks.map(task => (
             <TouchableOpacity
               key={task.id}
-              style={[styles.taskItem, task.completed && styles.taskItemDone]}
+              style={styles.taskItem}
               onPress={() => toggleTask(task.id)}
               activeOpacity={0.7}>
-              <View style={[styles.checkbox, task.completed && styles.checkboxDone]}>
-                {task.completed && <Text style={styles.checkmark}>✓</Text>}
-              </View>
-              <Text style={styles.taskEmoji}>{task.emoji}</Text>
-              <Text style={[styles.taskTitle, task.completed && styles.taskTitleDone]}>
-                {task.title}
-              </Text>
+              <View style={styles.checkbox} />
+              <Text style={styles.taskTitle}>{task.title}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -367,22 +341,20 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: C.border,
   },
-  taskItemDone: { backgroundColor: '#FAFAF8', borderColor: '#EBEBEB', opacity: 0.72 },
+  emptyTasks: {
+    fontSize: 14, color: C.textMuted, textAlign: 'center',
+    paddingVertical: 20, lineHeight: 22,
+  },
   checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 6,
     borderWidth: 2,
     borderColor: C.primaryMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginRight: 12,
+    flexShrink: 0,
   },
-  checkboxDone: { backgroundColor: C.primary, borderColor: C.primary },
-  checkmark: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
-  taskEmoji: { fontSize: 20, marginRight: 12 },
   taskTitle: { flex: 1, fontSize: 16, fontWeight: '500', color: C.text },
-  taskTitleDone: { color: C.textMuted, textDecorationLine: 'line-through' },
 
   // Floating button
   fab: {

@@ -22,6 +22,8 @@ const MAPPING = {
   'chart.bar.fill': 'bar-chart',
   'brain.head.profile': 'psychology',
   'person.fill': 'person',
+  'archivebox.fill': 'archive',
+  'star.fill': 'star',
 } as IconMapping;
 
 /**

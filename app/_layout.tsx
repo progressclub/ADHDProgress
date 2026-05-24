@@ -5,6 +5,8 @@ import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { DayTasksProvider } from '@/contexts/DayTasksContext';
+import { CoffreProvider } from '@/contexts/CoffreContext';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -15,6 +17,8 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+    <DayTasksProvider>
+    <CoffreProvider>
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -44,6 +48,8 @@ export default function RootLayout() {
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>
+    </CoffreProvider>
+    </DayTasksProvider>
     </GestureHandlerRootView>
   );
 }

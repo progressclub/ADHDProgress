@@ -27,18 +27,10 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-type Priority = 'haute' | 'normale' | 'basse';
-
-interface DayTask {
-  id: string;
-  title: string;
-  priority: Priority;
-  deadline?: string;
-  completed: boolean;
-}
+import DraggableFlatList, { ScaleDecorator, type RenderItemParams } from 'react-native-draggable-flatlist';
+import * as Haptics from 'expo-haptics';
+import { useDayTasks } from '@/contexts/DayTasksContext';
+import type { Priority, DayTask } from '@/contexts/DayTasksContext';
 
 interface SavedTask {
   id: string;
@@ -88,6 +80,10 @@ const DELETE_W = 88;
 const SPRING = { damping: 20, stiffness: 220, mass: 0.9 };
 const SCREEN_H = Dimensions.get('window').height;
 
+const PICKER_H = 44;
+const HOURS_LIST = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTES_LIST = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+
 const PREDEFINED_CATEGORIES = ['Ma routine du matin', 'Ma routine du soir'];
 
 const DAY_TASKS_PREFIX = 'adhd_day_tasks_';
@@ -118,6 +114,16 @@ function shiftDay(date: Date, n: number): Date {
 }
 function isToday(date: Date): boolean {
   return toISO(date) === toISO(new Date());
+}
+
+function deadlineStringToDate(s: string): Date {
+  const match = s.match(/^(\d{1,2})h(\d{2})$/);
+  const d = new Date();
+  if (match) d.setHours(parseInt(match[1], 10), parseInt(match[2], 10), 0, 0);
+  return d;
+}
+function dateToDeadlineString(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 type GroupedSection = { category: string; tasks: SavedTask[] };
@@ -168,18 +174,21 @@ function buildGroups(
 
 interface RowProps {
   task: DayTask;
+  drag: () => void;
+  isActive: boolean;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onLongPress: (task: DayTask, bounds: TaskBounds) => void;
 }
 
-function SwipeableTaskRow({ task, onToggle, onDelete, onLongPress }: RowProps) {
+function SwipeableTaskRow({ task, drag, isActive, onToggle, onDelete, onLongPress }: RowProps) {
   const containerRef = useRef<View>(null);
   const x = useSharedValue(0);
 
   const pan = Gesture.Pan()
     .activeOffsetX([-8, 8])
     .failOffsetY([-14, 14])
+    .enabled(!isActive)
     .onUpdate(e => {
       x.value = Math.max(-DELETE_W, Math.min(0, e.translationX));
     })
@@ -196,6 +205,7 @@ function SwipeableTaskRow({ task, onToggle, onDelete, onLongPress }: RowProps) {
 
   const longPress = Gesture.LongPress()
     .minDuration(400)
+    .enabled(!isActive)
     .onStart(() => { runOnJS(measureAndOpen)(); });
 
   const combined = Gesture.Race(pan, longPress);
@@ -209,39 +219,54 @@ function SwipeableTaskRow({ task, onToggle, onDelete, onLongPress }: RowProps) {
   }));
 
   const handleRowPress = () => {
-    if (x.value < 0) x.value = withSpring(0, SPRING);
+    if (isActive) return;
+    if (x.value < 0) { x.value = withSpring(0, SPRING); return; }
     onToggle(task.id);
   };
 
   return (
-    <GestureDetector gesture={combined}>
-      <View ref={containerRef} style={styles.swipeContainer}>
-        <View style={styles.deleteZone}>
-          <TouchableOpacity style={styles.deleteInner} onPress={() => onDelete(task.id)} activeOpacity={0.85}>
-            <Animated.Text style={[styles.deleteText, textStyle]}>Supprimer</Animated.Text>
-          </TouchableOpacity>
-        </View>
-        <Animated.View style={[styles.taskRowWrap, rowStyle]}>
-          <TouchableOpacity style={styles.taskRow} onPress={handleRowPress} activeOpacity={0.7}>
-            <View style={[styles.checkbox, task.completed && styles.checkboxDone]}>
-              {task.completed && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-            <View style={[styles.priorityDot, { backgroundColor: PRIORITY_COLOR[task.priority] }]} />
-            <Text style={[styles.taskTitle, task.completed && styles.taskTitleDone]} numberOfLines={2}>
-              {task.title}
-            </Text>
-            <View style={styles.taskRight}>
-              {task.deadline && <Text style={styles.deadlineText}>{task.deadline}</Text>}
-              <View style={[styles.priorityBadge, { backgroundColor: PRIORITY_BG[task.priority] }]}>
-                <Text style={[styles.priorityBadgeText, { color: PRIORITY_COLOR[task.priority] }]}>
-                  {PRIORITY_LABEL[task.priority]}
-                </Text>
+    <View ref={containerRef} style={styles.rowOuter}>
+      {/* Swipe-to-delete + long-press context menu */}
+      <GestureDetector gesture={combined}>
+        <View style={styles.swipeContainer}>
+          <View style={styles.deleteZone}>
+            <TouchableOpacity style={styles.deleteInner} onPress={() => onDelete(task.id)} activeOpacity={0.85}>
+              <Animated.Text style={[styles.deleteText, textStyle]}>Supprimer</Animated.Text>
+            </TouchableOpacity>
+          </View>
+          <Animated.View style={[styles.taskRowWrap, rowStyle]}>
+            <TouchableOpacity style={styles.taskRow} onPress={handleRowPress} activeOpacity={0.7}>
+              <View style={[styles.checkbox, task.completed && styles.checkboxDone]}>
+                {task.completed && <Text style={styles.checkmark}>✓</Text>}
               </View>
-            </View>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </GestureDetector>
+              <View style={[styles.priorityDot, { backgroundColor: PRIORITY_COLOR[task.priority] }]} />
+              <View style={styles.taskTextCol}>
+                <Text style={[styles.taskTitle, task.completed && styles.taskTitleDone]} numberOfLines={2}>
+                  {task.title}
+                </Text>
+                {task.deadline && (
+                  <Text style={styles.deadlineSub}>{task.deadline}</Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </GestureDetector>
+
+      {/* Drag handle — long press initiates DraggableFlatList drag */}
+      <Pressable
+        onLongPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          drag();
+        }}
+        delayLongPress={150}
+        style={styles.dragHandle}
+        hitSlop={4}>
+        <View style={styles.dragLine} />
+        <View style={styles.dragLine} />
+        <View style={styles.dragLine} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -279,10 +304,143 @@ function SavedTaskRow({ saved, onAdd, onLongPress }: SavedRowProps) {
   );
 }
 
+// ─── AccordionHeader ─────────────────────────────────────────────────────────
+
+interface AccordionHeaderProps {
+  category: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  onLongPress: (bounds: TaskBounds) => void;
+}
+
+function AccordionHeader({ category, isOpen, onToggle, onLongPress }: AccordionHeaderProps) {
+  const ref = useRef<any>(null);
+  const handleLongPress = () => {
+    ref.current?.measureInWindow((mx: number, my: number, mw: number, mh: number) => {
+      onLongPress({ x: mx, y: my, width: mw, height: mh });
+    });
+  };
+  return (
+    <Pressable
+      ref={ref}
+      style={styles.accordionHeader}
+      onPress={onToggle}
+      onLongPress={handleLongPress}
+      delayLongPress={400}>
+      <Text style={styles.accordionTitle}>{category}</Text>
+      <Text style={styles.accordionChevron}>{isOpen ? '▾' : '▸'}</Text>
+    </Pressable>
+  );
+}
+
+// ─── ScrollCol ───────────────────────────────────────────────────────────────
+
+interface ScrollColProps {
+  items: string[];
+  initialIndex: number;
+  onChange: (index: number) => void;
+}
+
+function ScrollCol({ items, initialIndex, onChange }: ScrollColProps) {
+  const scrollRef = useRef<ScrollView>(null);
+  // Local state: never driven by parent after mount — avoids re-render interference
+  const [current, setCurrent] = useState(initialIndex);
+  // Ref so commit() always calls the latest onChange without re-creating handlers
+  const onChangeFn = useRef(onChange);
+  useEffect(() => { onChangeFn.current = onChange; });
+  // Flag to distinguish momentum scroll from static drag-and-release
+  const hasMomentum = useRef(false);
+
+  // Scroll to initial position once, after layout
+  useEffect(() => {
+    const t = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: initialIndex * PICKER_H, animated: false });
+    }, 50);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const commit = (rawY: number) => {
+    const idx = Math.max(0, Math.min(items.length - 1, Math.round(rawY / PICKER_H)));
+    setCurrent(idx);
+    onChangeFn.current(idx);
+    // No scrollTo here — snapToInterval handles the snap natively
+  };
+
+  return (
+    <ScrollView
+      ref={scrollRef}
+      style={styles.pickerCol}
+      showsVerticalScrollIndicator={false}
+      snapToInterval={PICKER_H}
+      decelerationRate="fast"
+      contentContainerStyle={{ paddingVertical: PICKER_H }}
+      onMomentumScrollBegin={() => { hasMomentum.current = true; }}
+      onMomentumScrollEnd={e => {
+        hasMomentum.current = false;
+        commit(e.nativeEvent.contentOffset.y);
+      }}
+      onScrollEndDrag={e => {
+        // Only commit here when no momentum follows (slow drag-and-release)
+        const y = e.nativeEvent.contentOffset.y;
+        setTimeout(() => {
+          if (!hasMomentum.current) commit(y);
+        }, 50);
+      }}>
+      {items.map((label, i) => (
+        <TouchableOpacity
+          key={i}
+          style={styles.pickerItem}
+          onPress={() => {
+            setCurrent(i);
+            onChangeFn.current(i);
+            scrollRef.current?.scrollTo({ y: i * PICKER_H, animated: true });
+          }}
+          activeOpacity={0.6}>
+          <Text style={[styles.pickerItemText, i === current && styles.pickerItemSelected]}>
+            {label}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  );
+}
+
+// ─── TimeScrollPicker ─────────────────────────────────────────────────────────
+
+interface TimeScrollPickerProps {
+  value: Date;
+  onChange: (date: Date) => void;
+}
+
+function TimeScrollPicker({ value, onChange }: TimeScrollPickerProps) {
+  // Ref so onChange callbacks always read the latest value without stale closures
+  const valueRef = useRef(value);
+  valueRef.current = value;
+
+  return (
+    <View style={styles.pickerWrap}>
+      <View style={styles.pickerHighlight} pointerEvents="none" />
+      <ScrollCol
+        items={HOURS_LIST}
+        initialIndex={value.getHours()}
+        onChange={idx => { const d = new Date(valueRef.current); d.setHours(idx); onChange(d); }}
+      />
+      <Text style={styles.pickerSep}>h</Text>
+      <ScrollCol
+        items={MINUTES_LIST}
+        initialIndex={value.getMinutes()}
+        onChange={idx => { const d = new Date(valueRef.current); d.setMinutes(idx); onChange(d); }}
+      />
+    </View>
+  );
+}
+
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
 export default function TachesScreen() {
   // ── Day tasks ──
+  const { todayTasks, persistTodayTasks } = useDayTasks();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [tasks, setTasks] = useState<DayTask[]>([]);
 
@@ -293,12 +451,24 @@ export default function TachesScreen() {
   const [groupByCategory, setGroupByCategory] = useState(false);
   const [expandedCats, setExpandedCats] = useState<string[]>([]);
 
+  // ── Category context overlay ──
+  const [catCtx, setCatCtx] = useState<{
+    category: string;
+    bounds: TaskBounds;
+  } | null>(null);
+
+  // ── Edit category modal ──
+  const [editCatModal, setEditCatModal] = useState(false);
+  const [editCatOriginal, setEditCatOriginal] = useState('');
+  const [editCatName, setEditCatName] = useState('');
+  const [deleteCatConfirm, setDeleteCatConfirm] = useState(false);
+
   // ── "Add to day" modal state ──
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [addTitle, setAddTitle] = useState('');
   const [addPriority, setAddPriority] = useState<Priority>('normale');
   const [deadlineEnabled, setDeadlineEnabled] = useState(false);
-  const [deadlineTime, setDeadlineTime] = useState('');
+  const [deadlineDate, setDeadlineDate] = useState(new Date());
 
   // ── Context overlay (Instagram-style) ──
   const [ctx, setCtx] = useState<{
@@ -312,6 +482,8 @@ export default function TachesScreen() {
   const [editDayId, setEditDayId] = useState('');
   const [editDayTitle, setEditDayTitle] = useState('');
   const [editDayPriority, setEditDayPriority] = useState<Priority>('normale');
+  const [editDayDeadlineEnabled, setEditDayDeadlineEnabled] = useState(false);
+  const [editDayDeadlineDate, setEditDayDeadlineDate] = useState(new Date());
 
   // ── Edit saved task modal ──
   const [editSavedModal, setEditSavedModal] = useState(false);
@@ -332,8 +504,9 @@ export default function TachesScreen() {
   const [creatingCat, setCreatingCat] = useState(false);
   const [newCatName, setNewCatName] = useState('');
 
-  // Load day tasks
+  // Load day tasks (context handles today; AsyncStorage for other dates)
   useEffect(() => {
+    if (isToday(currentDate)) return;
     AsyncStorage.getItem(storageKey(currentDate)).then(raw => {
       setTasks(raw ? JSON.parse(raw) : []);
     });
@@ -351,11 +524,18 @@ export default function TachesScreen() {
 
   const persistDayTasks = useCallback(
     (next: DayTask[]) => {
-      setTasks(next);
-      AsyncStorage.setItem(storageKey(currentDate), JSON.stringify(next));
+      if (isToday(currentDate)) {
+        persistTodayTasks(next);
+      } else {
+        setTasks(next);
+        AsyncStorage.setItem(storageKey(currentDate), JSON.stringify(next));
+      }
     },
-    [currentDate],
+    [currentDate, persistTodayTasks],
   );
+
+  // Tasks to display: context for today, local state for other dates
+  const displayTasks = isToday(currentDate) ? todayTasks : tasks;
 
   const persistSavedTasks = (next: SavedTask[]) => {
     setSavedTasks(next);
@@ -368,23 +548,23 @@ export default function TachesScreen() {
 
   // ── Day task handlers ──
   const toggleTask = (id: string) =>
-    persistDayTasks(tasks.map(t => (t.id === id ? { ...t, completed: !t.completed } : t)));
+    persistDayTasks(displayTasks.map(t => (t.id === id ? { ...t, completed: !t.completed } : t)));
   const deleteTask = (id: string) =>
-    persistDayTasks(tasks.filter(t => t.id !== id));
+    persistDayTasks(displayTasks.filter(t => t.id !== id));
 
   const openAddModal = () => {
     setAddTitle(''); setAddPriority('normale');
-    setDeadlineEnabled(false); setDeadlineTime('');
+    setDeadlineEnabled(false); setDeadlineDate(new Date());
     setAddModalVisible(true);
   };
   const confirmAddTask = () => {
     const trimmed = addTitle.trim();
     if (!trimmed) return;
     persistDayTasks([
-      ...tasks,
+      ...displayTasks,
       {
         id: Date.now().toString(), title: trimmed, priority: addPriority,
-        deadline: deadlineEnabled && deadlineTime.trim() ? deadlineTime.trim() : undefined,
+        deadline: deadlineEnabled ? dateToDeadlineString(deadlineDate) : undefined,
         completed: false,
       },
     ]);
@@ -393,7 +573,7 @@ export default function TachesScreen() {
 
   const addSavedToDay = (saved: SavedTask) => {
     persistDayTasks([
-      ...tasks,
+      ...displayTasks,
       { id: Date.now().toString(), title: saved.title, priority: saved.priority, completed: false },
     ]);
   };
@@ -434,6 +614,8 @@ export default function TachesScreen() {
     if (type === 'day') {
       const t = task as DayTask;
       setEditDayId(t.id); setEditDayTitle(t.title); setEditDayPriority(t.priority);
+      setEditDayDeadlineEnabled(!!t.deadline);
+      setEditDayDeadlineDate(t.deadline ? deadlineStringToDate(t.deadline) : new Date());
     } else {
       const t = task as SavedTask;
       setEditSavedId(t.id); setEditSavedTitle(t.title); setEditSavedPriority(t.priority);
@@ -468,8 +650,10 @@ export default function TachesScreen() {
   const confirmEditDay = () => {
     const trimmed = editDayTitle.trim();
     if (!trimmed) return;
-    persistDayTasks(tasks.map(t =>
-      t.id === editDayId ? { ...t, title: trimmed, priority: editDayPriority } : t
+    persistDayTasks(displayTasks.map(t =>
+      t.id === editDayId
+        ? { ...t, title: trimmed, priority: editDayPriority, deadline: editDayDeadlineEnabled ? dateToDeadlineString(editDayDeadlineDate) : undefined }
+        : t
     ));
     setEditDayModal(false);
   };
@@ -527,6 +711,78 @@ export default function TachesScreen() {
   const toggleAccordion = (cat: string) =>
     setExpandedCats(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
 
+  // ── Category context overlay ──
+  const openCatCtx = (category: string, bounds: TaskBounds) => {
+    blurOpacity.value = 0; liftY.value = 0; menuOpacity.value = 0; menuY.value = 10;
+    setCatCtx({ category, bounds });
+    blurOpacity.value = withTiming(1, { duration: 260 });
+    liftY.value       = withSpring(-10, { damping: 16, stiffness: 200 });
+    menuOpacity.value = withTiming(1, { duration: 220 });
+    menuY.value       = withTiming(0, { duration: 240 });
+  };
+
+  const closeCatCtx = () => {
+    blurOpacity.value = withTiming(0, { duration: 200 });
+    liftY.value       = withTiming(0, { duration: 180 });
+    menuOpacity.value = withTiming(0, { duration: 160 }, (finished) => {
+      if (finished) runOnJS(setCatCtx)(null);
+    });
+  };
+
+  const handleCatCtxEdit = () => {
+    if (!catCtx) return;
+    const cat = catCtx.category;
+    setEditCatOriginal(cat);
+    setEditCatName(cat);
+    setDeleteCatConfirm(false);
+    blurOpacity.value = withTiming(0, { duration: 200 });
+    liftY.value       = withTiming(0, { duration: 180 });
+    menuOpacity.value = withTiming(0, { duration: 160 }, (finished) => {
+      if (finished) {
+        runOnJS(setCatCtx)(null);
+        runOnJS(setEditCatModal)(true);
+      }
+    });
+  };
+
+  // ── Category edit/delete handlers ──
+  const confirmRenameCategory = () => {
+    const newName = editCatName.trim();
+    if (!newName) return;
+    if (newName !== editCatOriginal) {
+      persistSavedTasks(savedTasks.map(t => ({
+        ...t,
+        categories: t.categories.map(c => c === editCatOriginal ? newName : c),
+      })));
+      if (customCats.includes(editCatOriginal)) {
+        persistCustomCats(customCats.map(c => c === editCatOriginal ? newName : c));
+      } else if (!customCats.includes(newName)) {
+        persistCustomCats([...customCats, newName]);
+      }
+      setExpandedCats(prev => prev.map(c => c === editCatOriginal ? newName : c));
+    }
+    setEditCatModal(false);
+  };
+
+  const deleteCategoryAndTasks = () => {
+    persistSavedTasks(savedTasks.filter(t => !t.categories.includes(editCatOriginal)));
+    persistCustomCats(customCats.filter(c => c !== editCatOriginal));
+    setExpandedCats(prev => prev.filter(c => c !== editCatOriginal));
+    setDeleteCatConfirm(false);
+    setEditCatModal(false);
+  };
+
+  const deleteCategoryKeepTasks = () => {
+    persistSavedTasks(savedTasks.map(t => ({
+      ...t,
+      categories: t.categories.filter(c => c !== editCatOriginal),
+    })));
+    persistCustomCats(customCats.filter(c => c !== editCatOriginal));
+    setExpandedCats(prev => prev.filter(c => c !== editCatOriginal));
+    setDeleteCatConfirm(false);
+    setEditCatModal(false);
+  };
+
   // ── Grouped saved tasks ──
   const groups = buildGroups(savedTasks, searchQuery, customCats);
   const q = searchQuery.toLowerCase().trim();
@@ -582,19 +838,32 @@ export default function TachesScreen() {
             </View>
           </TouchableOpacity>
 
-          {tasks.length > 0 && <View style={styles.divider} />}
-          {tasks.map((task, idx) => (
-            <React.Fragment key={task.id}>
-              <SwipeableTaskRow
-                task={task}
-                onToggle={toggleTask}
-                onDelete={deleteTask}
-                onLongPress={(t, bounds) => openCtx('day', t, bounds)}
-              />
-              {idx < tasks.length - 1 && <View style={styles.rowDivider} />}
-            </React.Fragment>
-          ))}
-          {tasks.length === 0 && (
+          {displayTasks.length > 0 && <View style={styles.divider} />}
+          <DraggableFlatList
+            data={displayTasks}
+            keyExtractor={item => item.id}
+            scrollEnabled={false}
+            onDragEnd={({ data }) => persistDayTasks(data)}
+            renderItem={({ item, drag, isActive, getIndex }: RenderItemParams<DayTask>) => {
+              const idx = getIndex() ?? 0;
+              return (
+                <ScaleDecorator activeScale={1.04}>
+                  <SwipeableTaskRow
+                    task={item}
+                    drag={drag}
+                    isActive={isActive}
+                    onToggle={toggleTask}
+                    onDelete={deleteTask}
+                    onLongPress={(t, bounds) => openCtx('day', t, bounds)}
+                  />
+                  {idx < displayTasks.length - 1 && !isActive && (
+                    <View style={styles.rowDivider} />
+                  )}
+                </ScaleDecorator>
+              );
+            }}
+          />
+          {displayTasks.length === 0 && (
             <Text style={styles.emptyText}>Aucune tâche pour ce jour</Text>
           )}
         </View>
@@ -676,13 +945,12 @@ export default function TachesScreen() {
                 const isOpen = expandedCats.includes(section.category);
                 return (
                   <View key={section.category}>
-                    <TouchableOpacity
-                      style={styles.accordionHeader}
-                      onPress={() => toggleAccordion(section.category)}
-                      activeOpacity={0.75}>
-                      <Text style={styles.accordionTitle}>{section.category}</Text>
-                      <Text style={styles.accordionChevron}>{isOpen ? '▾' : '▸'}</Text>
-                    </TouchableOpacity>
+                    <AccordionHeader
+                      category={section.category}
+                      isOpen={isOpen}
+                      onToggle={() => toggleAccordion(section.category)}
+                      onLongPress={(bounds) => openCatCtx(section.category, bounds)}
+                    />
                     {isOpen && (
                       <>
                         {section.tasks.map((saved, idx) => (
@@ -726,9 +994,9 @@ export default function TachesScreen() {
               placeholder="Ex : Appeler le médecin"
               placeholderTextColor={C.textMuted}
               value={addTitle}
-              onChangeText={setAddTitle}
+              onChangeText={(text) => setAddTitle(text.charAt(0).toUpperCase() + text.slice(1))}
               autoFocus
-              autoCapitalize="sentences"
+              autoCapitalize="none"
               returnKeyType="done"
             />
 
@@ -757,15 +1025,7 @@ export default function TachesScreen() {
               />
             </View>
             {deadlineEnabled && (
-              <TextInput
-                style={[styles.input, { marginBottom: 0 }]}
-                placeholder="Ex : 18h00"
-                placeholderTextColor={C.textMuted}
-                value={deadlineTime}
-                onChangeText={setDeadlineTime}
-                autoCapitalize="none"
-                returnKeyType="done"
-              />
+              <TimeScrollPicker value={deadlineDate} onChange={setDeadlineDate} />
             )}
 
             <TouchableOpacity
@@ -795,9 +1055,9 @@ export default function TachesScreen() {
               placeholder="Ex : Faire 10 min de yoga"
               placeholderTextColor={C.textMuted}
               value={saveTitle}
-              onChangeText={setSaveTitle}
+              onChangeText={(text) => setSaveTitle(text.charAt(0).toUpperCase() + text.slice(1))}
               autoFocus
-              autoCapitalize="sentences"
+              autoCapitalize="none"
               returnKeyType="done"
             />
 
@@ -856,10 +1116,10 @@ export default function TachesScreen() {
                       placeholder="Nom de la catégorie"
                       placeholderTextColor={C.textMuted}
                       value={newCatName}
-                      onChangeText={setNewCatName}
+                      onChangeText={(text) => setNewCatName(text.charAt(0).toUpperCase() + text.slice(1))}
                       returnKeyType="done"
                       onSubmitEditing={confirmNewCat}
-                      autoCapitalize="sentences"
+                      autoCapitalize="none"
                       autoFocus
                     />
                     <TouchableOpacity
@@ -926,16 +1186,11 @@ export default function TachesScreen() {
                       {t.completed && <Text style={styles.checkmark}>✓</Text>}
                     </View>
                     <View style={[styles.priorityDot, { backgroundColor: PRIORITY_COLOR[t.priority] }]} />
-                    <Text style={[styles.taskTitle, t.completed && styles.taskTitleDone]} numberOfLines={2}>
-                      {t.title}
-                    </Text>
-                    <View style={styles.taskRight}>
-                      {t.deadline && <Text style={styles.deadlineText}>{t.deadline}</Text>}
-                      <View style={[styles.priorityBadge, { backgroundColor: PRIORITY_BG[t.priority] }]}>
-                        <Text style={[styles.priorityBadgeText, { color: PRIORITY_COLOR[t.priority] }]}>
-                          {PRIORITY_LABEL[t.priority]}
-                        </Text>
-                      </View>
+                    <View style={styles.taskTextCol}>
+                      <Text style={[styles.taskTitle, t.completed && styles.taskTitleDone]} numberOfLines={2}>
+                        {t.title}
+                      </Text>
+                      {t.deadline && <Text style={styles.deadlineSub}>{t.deadline}</Text>}
                     </View>
                   </View>
                 );
@@ -988,6 +1243,140 @@ export default function TachesScreen() {
       )}
 
       {/* ════════════════════════════════════════════════
+          CATEGORY CONTEXT OVERLAY (Instagram-style)
+      ════════════════════════════════════════════════ */}
+      {catCtx && (
+        <Modal visible transparent animationType="none" onRequestClose={closeCatCtx}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeCatCtx} />
+
+          <Animated.View style={[StyleSheet.absoluteFill, blurStyle]} pointerEvents="none">
+            <BlurView
+              style={StyleSheet.absoluteFill}
+              intensity={55}
+              tint="dark"
+              experimentalBlurMethod="dimezisBlurView"
+            />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.22)' }]} />
+          </Animated.View>
+
+          {/* Lifted accordion header */}
+          <Animated.View
+            style={[
+              styles.liftedCard,
+              {
+                position: 'absolute',
+                top: catCtx.bounds.y,
+                left: catCtx.bounds.x,
+                width: catCtx.bounds.width,
+              },
+              liftStyle,
+            ]}
+            pointerEvents="none">
+            <View style={styles.accordionHeader}>
+              <Text style={styles.accordionTitle}>{catCtx.category}</Text>
+              <Text style={styles.accordionChevron}>▸</Text>
+            </View>
+          </Animated.View>
+
+          {/* Context menu */}
+          {(() => {
+            const menuTop = Math.min(
+              catCtx.bounds.y + catCtx.bounds.height + 8,
+              SCREEN_H - 58 - 20,
+            );
+            return (
+              <Animated.View
+                style={[
+                  styles.ctxCard,
+                  {
+                    position: 'absolute',
+                    top: menuTop,
+                    left: catCtx.bounds.x,
+                    width: catCtx.bounds.width,
+                  },
+                  menuStyle,
+                ]}>
+                <TouchableOpacity style={styles.ctxItem} onPress={handleCatCtxEdit} activeOpacity={0.7}>
+                  <Text style={styles.ctxItemText}>Modifier</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            );
+          })()}
+        </Modal>
+      )}
+
+      {/* ════════════════════════════════════════════════
+          MODAL — Edit category
+      ════════════════════════════════════════════════ */}
+      <Modal
+        visible={editCatModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => { setEditCatModal(false); setDeleteCatConfirm(false); }}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => { setEditCatModal(false); setDeleteCatConfirm(false); }} />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Modifier la catégorie</Text>
+
+            <Text style={styles.fieldLabel}>Nom</Text>
+            <TextInput
+              style={styles.input}
+              value={editCatName}
+              onChangeText={(text) => setEditCatName(text.charAt(0).toUpperCase() + text.slice(1))}
+              autoCapitalize="none"
+              returnKeyType="done"
+              autoFocus
+            />
+
+            <TouchableOpacity
+              style={[styles.confirmBtn, !editCatName.trim() && styles.confirmBtnDisabled]}
+              onPress={confirmRenameCategory}
+              disabled={!editCatName.trim()}
+              activeOpacity={0.85}>
+              <Text style={styles.confirmBtnText}>Enregistrer</Text>
+            </TouchableOpacity>
+
+            <View style={{ height: 16 }} />
+
+            {!deleteCatConfirm ? (
+              <TouchableOpacity
+                style={styles.deleteCatBtn}
+                onPress={() => setDeleteCatConfirm(true)}
+                activeOpacity={0.75}>
+                <Text style={styles.deleteCatBtnText}>Supprimer la catégorie</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.deleteCatConfirmBox}>
+                <Text style={styles.deleteCatQuestion}>
+                  Supprimer aussi les tâches de cette catégorie ?
+                </Text>
+                <TouchableOpacity
+                  style={[styles.confirmBtn, styles.deleteCatConfirmBtn, { marginBottom: 10 }]}
+                  onPress={deleteCategoryAndTasks}
+                  activeOpacity={0.85}>
+                  <Text style={styles.confirmBtnText}>Supprimer les tâches aussi</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.confirmBtn, styles.confirmBtnOutline]}
+                  onPress={deleteCategoryKeepTasks}
+                  activeOpacity={0.85}>
+                  <Text style={[styles.confirmBtnText, { color: C.primary }]}>Garder les tâches</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => { setEditCatModal(false); setDeleteCatConfirm(false); }}
+              activeOpacity={0.7}>
+              <Text style={styles.cancelBtnText}>Annuler</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ════════════════════════════════════════════════
           MODAL — Edit day task
       ════════════════════════════════════════════════ */}
       <Modal visible={editDayModal} animationType="slide" transparent onRequestClose={() => setEditDayModal(false)}>
@@ -1003,9 +1392,8 @@ export default function TachesScreen() {
               placeholder="Titre de la tâche"
               placeholderTextColor={C.textMuted}
               value={editDayTitle}
-              onChangeText={setEditDayTitle}
-              autoFocus
-              autoCapitalize="sentences"
+              onChangeText={(text) => setEditDayTitle(text.charAt(0).toUpperCase() + text.slice(1))}
+              autoCapitalize="none"
               returnKeyType="done"
             />
 
@@ -1024,8 +1412,22 @@ export default function TachesScreen() {
               ))}
             </View>
 
+            <View style={styles.toggleRow}>
+              <Text style={styles.fieldLabel}>Deadline</Text>
+              <Switch
+                value={editDayDeadlineEnabled}
+                onValueChange={setEditDayDeadlineEnabled}
+                trackColor={{ false: '#E5E7EB', true: C.primaryMuted }}
+                thumbColor={editDayDeadlineEnabled ? C.primary : '#F9FAFB'}
+              />
+            </View>
+
+            {editDayDeadlineEnabled && (
+              <TimeScrollPicker key={editDayId} value={editDayDeadlineDate} onChange={setEditDayDeadlineDate} />
+            )}
+
             <TouchableOpacity
-              style={[styles.confirmBtn, !editDayTitle.trim() && styles.confirmBtnDisabled]}
+              style={[styles.confirmBtn, { marginTop: 8 }, !editDayTitle.trim() && styles.confirmBtnDisabled]}
               onPress={confirmEditDay}
               disabled={!editDayTitle.trim()}
               activeOpacity={0.85}>
@@ -1043,99 +1445,104 @@ export default function TachesScreen() {
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setEditSavedModal(false)} />
           <View style={styles.sheet}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Modifier la tâche</Text>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 24 }}>
+              <Text style={styles.sheetTitle}>Modifier la tâche</Text>
 
-            <Text style={styles.fieldLabel}>Titre</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Titre de la tâche"
-              placeholderTextColor={C.textMuted}
-              value={editSavedTitle}
-              onChangeText={setEditSavedTitle}
-              autoFocus
-              autoCapitalize="sentences"
-              returnKeyType="done"
-            />
-
-            <Text style={styles.fieldLabel}>Priorité</Text>
-            <View style={styles.priorityRow}>
-              {(['haute', 'normale', 'basse'] as Priority[]).map(p => (
-                <TouchableOpacity
-                  key={p}
-                  style={[styles.priorityBtn, { borderColor: PRIORITY_COLOR[p] }, editSavedPriority === p && { backgroundColor: PRIORITY_COLOR[p] }]}
-                  onPress={() => setEditSavedPriority(p)}
-                  activeOpacity={0.75}>
-                  <Text style={[styles.priorityBtnText, { color: editSavedPriority === p ? '#FFFFFF' : PRIORITY_COLOR[p] }]}>
-                    {PRIORITY_LABEL[p]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.toggleRow}>
-              <Text style={styles.fieldLabel}>Catégorie</Text>
-              <Switch
-                value={editSavedCatEnabled}
-                onValueChange={v => { setEditSavedCatEnabled(v); if (!v) { setEditSavedCats([]); setEditCreatingCat(false); setEditNewCatName(''); } }}
-                trackColor={{ false: '#E5E7EB', true: C.primaryMuted }}
-                thumbColor={editSavedCatEnabled ? C.primary : '#F9FAFB'}
+              <Text style={styles.fieldLabel}>Titre</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Titre de la tâche"
+                placeholderTextColor={C.textMuted}
+                value={editSavedTitle}
+                onChangeText={(text) => setEditSavedTitle(text.charAt(0).toUpperCase() + text.slice(1))}
+                autoFocus
+                autoCapitalize="none"
+                returnKeyType="done"
               />
-            </View>
 
-            {editSavedCatEnabled && (
-              <View style={styles.catChipsWrap}>
-                {[...PREDEFINED_CATEGORIES, ...customCats].map(cat => {
-                  const isSel = editSavedCats.includes(cat);
-                  return (
-                    <TouchableOpacity
-                      key={cat}
-                      style={[styles.catChip, isSel && styles.catChipSelected]}
-                      onPress={() => setEditSavedCats(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat])}
-                      activeOpacity={0.75}>
-                      <Text style={[styles.catChipText, isSel && styles.catChipTextSelected]}>{cat}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-                <TouchableOpacity
-                  style={[styles.catChip, styles.catChipNew, editCreatingCat && styles.catChipSelected]}
-                  onPress={() => setEditCreatingCat(prev => !prev)}
-                  activeOpacity={0.75}>
-                  <Text style={[styles.catChipText, styles.catChipNewText, editCreatingCat && styles.catChipTextSelected]}>
-                    + Créer une catégorie
-                  </Text>
-                </TouchableOpacity>
-                {editCreatingCat && (
-                  <View style={styles.newCatRow}>
-                    <TextInput
-                      style={styles.newCatInput}
-                      placeholder="Nom de la catégorie"
-                      placeholderTextColor={C.textMuted}
-                      value={editNewCatName}
-                      onChangeText={setEditNewCatName}
-                      returnKeyType="done"
-                      onSubmitEditing={confirmEditNewCat}
-                      autoCapitalize="sentences"
-                      autoFocus
-                    />
-                    <TouchableOpacity
-                      style={[styles.newCatConfirm, !editNewCatName.trim() && styles.newCatConfirmDisabled]}
-                      onPress={confirmEditNewCat}
-                      disabled={!editNewCatName.trim()}
-                      activeOpacity={0.85}>
-                      <Text style={styles.newCatConfirmText}>✓</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+              <Text style={styles.fieldLabel}>Priorité</Text>
+              <View style={styles.priorityRow}>
+                {(['haute', 'normale', 'basse'] as Priority[]).map(p => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[styles.priorityBtn, { borderColor: PRIORITY_COLOR[p] }, editSavedPriority === p && { backgroundColor: PRIORITY_COLOR[p] }]}
+                    onPress={() => setEditSavedPriority(p)}
+                    activeOpacity={0.75}>
+                    <Text style={[styles.priorityBtnText, { color: editSavedPriority === p ? '#FFFFFF' : PRIORITY_COLOR[p] }]}>
+                      {PRIORITY_LABEL[p]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-            )}
 
-            <TouchableOpacity
-              style={[styles.confirmBtn, { marginTop: 24 }, !editSavedTitle.trim() && styles.confirmBtnDisabled]}
-              onPress={confirmEditSaved}
-              disabled={!editSavedTitle.trim()}
-              activeOpacity={0.85}>
-              <Text style={styles.confirmBtnText}>Enregistrer</Text>
-            </TouchableOpacity>
+              <View style={styles.toggleRow}>
+                <Text style={styles.fieldLabel}>Catégorie</Text>
+                <Switch
+                  value={editSavedCatEnabled}
+                  onValueChange={v => { setEditSavedCatEnabled(v); if (!v) { setEditSavedCats([]); setEditCreatingCat(false); setEditNewCatName(''); } }}
+                  trackColor={{ false: '#E5E7EB', true: C.primaryMuted }}
+                  thumbColor={editSavedCatEnabled ? C.primary : '#F9FAFB'}
+                />
+              </View>
+
+              {editSavedCatEnabled && (
+                <View style={styles.catChipsWrap}>
+                  {[...PREDEFINED_CATEGORIES, ...customCats].map(cat => {
+                    const isSel = editSavedCats.includes(cat);
+                    return (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[styles.catChip, isSel && styles.catChipSelected]}
+                        onPress={() => setEditSavedCats(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat])}
+                        activeOpacity={0.75}>
+                        <Text style={[styles.catChipText, isSel && styles.catChipTextSelected]}>{cat}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <TouchableOpacity
+                    style={[styles.catChip, styles.catChipNew, editCreatingCat && styles.catChipSelected]}
+                    onPress={() => setEditCreatingCat(prev => !prev)}
+                    activeOpacity={0.75}>
+                    <Text style={[styles.catChipText, styles.catChipNewText, editCreatingCat && styles.catChipTextSelected]}>
+                      + Créer une catégorie
+                    </Text>
+                  </TouchableOpacity>
+                  {editCreatingCat && (
+                    <View style={styles.newCatRow}>
+                      <TextInput
+                        style={styles.newCatInput}
+                        placeholder="Nom de la catégorie"
+                        placeholderTextColor={C.textMuted}
+                        value={editNewCatName}
+                        onChangeText={(text) => setEditNewCatName(text.charAt(0).toUpperCase() + text.slice(1))}
+                        returnKeyType="done"
+                        onSubmitEditing={confirmEditNewCat}
+                        autoCapitalize="none"
+                        autoFocus
+                      />
+                      <TouchableOpacity
+                        style={[styles.newCatConfirm, !editNewCatName.trim() && styles.newCatConfirmDisabled]}
+                        onPress={confirmEditNewCat}
+                        disabled={!editNewCatName.trim()}
+                        activeOpacity={0.85}>
+                        <Text style={styles.newCatConfirmText}>✓</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[styles.confirmBtn, { marginTop: 24 }, !editSavedTitle.trim() && styles.confirmBtnDisabled]}
+                onPress={confirmEditSaved}
+                disabled={!editSavedTitle.trim()}
+                activeOpacity={0.85}>
+                <Text style={styles.confirmBtnText}>Enregistrer</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -1190,7 +1597,8 @@ const styles = StyleSheet.create({
   addIcon: { fontSize: 18, color: C.primary, fontWeight: '700', lineHeight: 22 },
 
   // Swipe-to-delete
-  swipeContainer: { overflow: 'hidden' },
+  rowOuter: { flexDirection: 'row', alignItems: 'stretch', backgroundColor: C.card },
+  swipeContainer: { flex: 1, overflow: 'hidden' },
   deleteZone: { position: 'absolute', right: 0, top: 0, bottom: 0, width: DELETE_W, backgroundColor: '#EF4444' },
   deleteInner: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   deleteText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
@@ -1205,13 +1613,18 @@ const styles = StyleSheet.create({
   checkboxDone: { backgroundColor: C.primary, borderColor: C.primary },
   checkmark: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
   priorityDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
-  taskTitle: { flex: 1, fontSize: 15, fontWeight: '500', color: C.text, lineHeight: 20 },
+  taskTextCol: { flex: 1, gap: 2 },
+  taskTitle: { fontSize: 15, fontWeight: '500', color: C.text, lineHeight: 20 },
   taskTitleDone: { color: C.textMuted, textDecorationLine: 'line-through' },
-  taskRight: { alignItems: 'flex-end', gap: 4, flexShrink: 0 },
-  deadlineText: { fontSize: 12, color: C.textSub, fontWeight: '500' },
-  priorityBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
-  priorityBadgeText: { fontSize: 11, fontWeight: '700' },
+  deadlineSub: { fontSize: 11, color: C.textMuted, fontWeight: '400' },
   emptyText: { fontSize: 14, color: C.textMuted, textAlign: 'center', paddingVertical: 24, paddingHorizontal: 16 },
+
+  // Drag handle
+  dragHandle: {
+    width: 44, alignItems: 'center', justifyContent: 'center', gap: 4,
+    backgroundColor: C.card, paddingHorizontal: 12,
+  },
+  dragLine: { width: 18, height: 2, borderRadius: 1, backgroundColor: C.textMuted },
 
   // ── Saved tasks card ──
   savedHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, gap: 10 },
@@ -1324,10 +1737,47 @@ const styles = StyleSheet.create({
   newCatConfirmDisabled: { backgroundColor: C.primaryMuted },
   newCatConfirmText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
 
+  pickerWrap: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    height: PICKER_H * 3, borderRadius: 16, overflow: 'hidden',
+    backgroundColor: '#F5F3FF', marginBottom: 8,
+  },
+  pickerHighlight: {
+    position: 'absolute', left: 0, right: 0,
+    top: PICKER_H, height: PICKER_H,
+    backgroundColor: C.primaryLight, borderRadius: 10,
+  },
+  pickerCol: { width: 72, height: PICKER_H * 3 },
+  pickerItem: { height: PICKER_H, justifyContent: 'center', alignItems: 'center' },
+  pickerItemText: { fontSize: 22, fontWeight: '400', color: C.textMuted },
+  pickerItemSelected: { fontWeight: '700', color: C.primary },
+  pickerSep: { fontSize: 26, fontWeight: '800', color: C.primary, marginHorizontal: 2, marginBottom: 2 },
+
   confirmBtn: {
     backgroundColor: C.primary, borderRadius: 14, paddingVertical: 16, alignItems: 'center',
     shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 5,
   },
   confirmBtnDisabled: { backgroundColor: C.primaryMuted, shadowOpacity: 0, elevation: 0 },
   confirmBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  confirmBtnOutline: {
+    backgroundColor: 'transparent', borderWidth: 1.5, borderColor: C.primary,
+    shadowOpacity: 0, elevation: 0,
+  },
+
+  // ── Edit category modal ──
+  deleteCatBtn: {
+    paddingVertical: 14, alignItems: 'center', borderRadius: 14,
+    borderWidth: 1.5, borderColor: '#FCA5A5', backgroundColor: '#FFF1F1',
+  },
+  deleteCatBtnText: { fontSize: 15, fontWeight: '600', color: '#EF4444' },
+  deleteCatConfirmBox: { gap: 0 },
+  deleteCatQuestion: {
+    fontSize: 14, color: C.textSub, textAlign: 'center',
+    marginBottom: 14, lineHeight: 20,
+  },
+  deleteCatConfirmBtn: {
+    backgroundColor: '#EF4444', shadowColor: '#EF4444',
+  },
+  cancelBtn: { marginTop: 12, paddingVertical: 14, alignItems: 'center' },
+  cancelBtnText: { fontSize: 15, fontWeight: '600', color: C.textSub },
 });

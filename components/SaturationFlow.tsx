@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BellOff, Sun, VolumeX, PanelLeftClose, DoorOpen, Shirt } from 'lucide-react-native';
+import { BellOff, Sun, VolumeX, PanelLeftClose, DoorOpen, Shirt, ListTodo, Cloud, Anchor, Layers, Heart, BatteryLow, Sparkles, Feather } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -195,14 +195,88 @@ const STEP2_TECHNIQUES = [
   },
 ];
 
-const STEP3_PROMPTS = [
-  { key: 'dois', prefix: 'Je dois…' },
-  { key: 'peur', prefix: "J'ai peur de…" },
-  { key: 'arrive', prefix: "Je n'arrive pas à…" },
-  { key: 'culpabilise', prefix: 'Je culpabilise parce que…' },
-  { key: 'fatigue', prefix: "Ce qui me fatigue c'est…" },
-  { key: 'trop', prefix: "J'ai trop de…" },
-  { key: 'veux', prefix: 'Je veux juste…' },
+type Step3CardData = {
+  key: string;
+  IconComponent: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+  title: string;
+  description: string;
+  placeholder: string;
+  microMessage: string;
+};
+
+const STEP3_CARDS: Step3CardData[] = [
+  {
+    key: 'dois',
+    IconComponent: ListTodo,
+    title: 'Je dois penser à…',
+    description: "Les choses que ton cerveau essaie de ne pas oublier.",
+    placeholder: "répondre à quelqu'un, ranger, envoyer un document, acheter quelque chose…",
+    microMessage: "Tu n'as pas besoin de tout faire. On les sort juste de ta tête.",
+  },
+  {
+    key: 'peur',
+    IconComponent: Cloud,
+    title: "J'ai peur que…",
+    description: "Les scénarios qui tournent en boucle, même s'ils ne sont pas sûrs.",
+    placeholder: "être en retard, oublier, décevoir, ne pas y arriver…",
+    microMessage: "Une peur n'est pas forcément une urgence. On la pose ici pour qu'elle arrête de tourner seule.",
+  },
+  {
+    key: 'bloque',
+    IconComponent: Anchor,
+    title: 'Je bloque sur…',
+    description: "Ce qui semble trop lourd à commencer maintenant.",
+    placeholder: "ouvrir un message, ranger, choisir, commencer, répondre…",
+    microMessage: "Le but n'est pas de te forcer. C'est de voir où ça coince.",
+  },
+  {
+    key: 'trop',
+    IconComponent: Layers,
+    title: 'Il y a trop de…',
+    description: "Ce qui déborde : pensées, bruit, choses, demandes, émotions.",
+    placeholder: "bruit, idées, tâches, notifications, pression…",
+    microMessage: "Quand tout est trop, nommer le trop aide déjà à le rendre moins flou.",
+  },
+  {
+    key: 'culpabilise',
+    IconComponent: Heart,
+    title: 'Je culpabilise à propos de…',
+    description: "Ce que tu te reproches, même si ce n'est pas forcément juste.",
+    placeholder: "je n'ai pas répondu, j'ai procrastiné, je suis en retard…",
+    microMessage: "La culpabilité prend beaucoup de place. On la sort de ta tête, sans la croire entièrement.",
+  },
+  {
+    key: 'vide',
+    IconComponent: BatteryLow,
+    title: "Ce qui me vide, c'est…",
+    description: "Les choses qui prennent ton énergie en arrière-plan.",
+    placeholder: "le bruit, les messages, les choix, le désordre, les gens…",
+    microMessage: "La fatigue a souvent une raison. On l'écoute sans forcément tout résoudre.",
+  },
+  {
+    key: 'besoin',
+    IconComponent: Sparkles,
+    title: "Là, j'aurais juste besoin de…",
+    description: "Pour trouver le besoin simple derrière la saturation.",
+    placeholder: "silence, dormir, être seule, qu'on m'aide, manger, respirer…",
+    microMessage: "Derrière le chaos, il y a souvent un besoin très simple.",
+  },
+  {
+    key: 'autre',
+    IconComponent: Feather,
+    title: 'Autre chose à déposer',
+    description: "Même si ça ne rentre dans aucune case.",
+    placeholder: "écris ce qui vient, même si c'est confus…",
+    microMessage: "Même si ce n'est pas clair, tu peux le déposer ici.",
+  },
+];
+
+const STEP3_NOWORDS_OPTIONS = [
+  { key: 'taches', label: 'Trop de tâches', desc: 'Tout semble urgent ou mélangé.' },
+  { key: 'emotions', label: "Trop d'émotions", desc: 'Ça déborde à l\'intérieur.' },
+  { key: 'bruit', label: 'Trop de bruit', desc: "Trop de sons, d'écrans, de monde ou de pensées." },
+  { key: 'fatigue', label: 'Trop de fatigue', desc: 'La batterie est trop basse pour réfléchir.' },
+  { key: 'saispasdont', label: 'Je ne sais pas', desc: "Je veux juste l'option la plus simple." },
 ];
 
 const RECOVERY_SUGGESTIONS = [
@@ -300,7 +374,7 @@ const timerScreenStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.bg,
-    paddingTop: 52,
+    paddingTop: 8,
     paddingHorizontal: 20,
     paddingBottom: 40,
   },
@@ -443,6 +517,95 @@ function CardRow({
   );
 }
 
+const step3CardStyles = StyleSheet.create({
+  card: {
+    backgroundColor: C.surface, borderRadius: 16,
+    borderWidth: 1.5, borderColor: C.border, overflow: 'hidden',
+  },
+  cardOpen: { borderColor: C.primary },
+  cardFilled: { borderColor: C.primaryMuted },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 14, gap: 12,
+  },
+  titleBlock: { flex: 1 },
+  title: { fontSize: 15, fontWeight: '700', color: C.text },
+  titleOpen: { color: C.primary },
+  desc: { fontSize: 13, color: C.textSub, marginTop: 2, lineHeight: 18 },
+  dot: {
+    width: 7, height: 7, borderRadius: 4,
+    backgroundColor: C.primary, marginRight: 4,
+  },
+  chevron: { fontSize: 22, color: C.primaryMuted, transform: [{ rotate: '0deg' }] },
+  chevronOpen: { transform: [{ rotate: '90deg' }] },
+  body: { backgroundColor: C.expandBg, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14 },
+  input: {
+    fontSize: 14, color: C.text, lineHeight: 22,
+    minHeight: 60, paddingVertical: 4,
+    textAlignVertical: 'top',
+  },
+  micro: { fontSize: 12, color: C.primary, marginTop: 8, lineHeight: 17, fontStyle: 'italic' },
+});
+
+function BrainCard({
+  card,
+  value,
+  onChange,
+}: {
+  card: Step3CardData;
+  value: string;
+  onChange: (text: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const anim = useRef(new Animated.Value(0)).current;
+  const hasContent = value.trim().length > 0;
+
+  const toggle = () => {
+    const next = !isOpen;
+    setIsOpen(next);
+    Animated.spring(anim, {
+      toValue: next ? 1 : 0,
+      useNativeDriver: false,
+      tension: 60,
+      friction: 12,
+    }).start();
+  };
+
+  const maxHeight = anim.interpolate({ inputRange: [0, 1], outputRange: [0, 300] });
+  const opacity = anim.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 0, 1] });
+
+  return (
+    <View style={[step3CardStyles.card, isOpen && step3CardStyles.cardOpen, !isOpen && hasContent && step3CardStyles.cardFilled]}>
+      <TouchableOpacity style={step3CardStyles.header} onPress={toggle} activeOpacity={0.75}>
+        <card.IconComponent size={24} color={isOpen || hasContent ? C.primary : C.textSub} strokeWidth={1.8} />
+        <View style={step3CardStyles.titleBlock}>
+          <Text style={[step3CardStyles.title, (isOpen || hasContent) && step3CardStyles.titleOpen]}>
+            {card.title}
+          </Text>
+          {!isOpen && <Text style={step3CardStyles.desc}>{card.description}</Text>}
+        </View>
+        {hasContent && !isOpen && <View style={step3CardStyles.dot} />}
+        <Text style={[step3CardStyles.chevron, isOpen && step3CardStyles.chevronOpen]}>›</Text>
+      </TouchableOpacity>
+
+      <Animated.View style={{ maxHeight, overflow: 'hidden', opacity }}>
+        <View style={step3CardStyles.body}>
+          <TextInput
+            style={step3CardStyles.input}
+            value={value}
+            onChangeText={onChange}
+            placeholder={card.placeholder}
+            placeholderTextColor={C.primaryMuted}
+            autoCapitalize="none"
+            multiline
+          />
+          <Text style={step3CardStyles.micro}>{card.microMessage}</Text>
+        </View>
+      </Animated.View>
+    </View>
+  );
+}
+
 type Props = {
   timeChoice: 'Mode Express' | 'Mode Découverte';
   onComplete: () => void;
@@ -467,7 +630,11 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
   const timer2Ref = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [brainFields, setBrainFields] = useState<Record<string, string>>({});
-  const [brainFree, setBrainFree] = useState('');
+  const [step3ShowMore, setStep3ShowMore] = useState(false);
+  const step3MoreAnim = useRef(new Animated.Value(0)).current;
+  const [step3View, setStep3View] = useState<'main' | 'nowords'>('main');
+  const [step3NoWordsChoice, setStep3NoWordsChoice] = useState<string | null>(null);
+  const [step3MinimalSignal, setStep3MinimalSignal] = useState<string | null>(null);
 
   const [triage, setTriage] = useState<TriageResult | null>(null);
   const [triageLoading, setTriageLoading] = useState(false);
@@ -517,11 +684,22 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
     });
   }, [fadeAnim, slideAnim]);
 
+  const handleStep3NoWords = () => {
+    // TODO: chemin B — tri simplifié selon signal minimal
+    if (step3NoWordsChoice) setStep3MinimalSignal(step3NoWordsChoice);
+    setTriageLoading(true);
+    setTriageError(null);
+    setTriage(null);
+    advanceTo(4);
+    setTriage({ urgent: [], pasMaintenant: [], aClarifier: [], emotion: [] });
+    setTriageLoading(false);
+  };
+
   const handleStep3Submit = async () => {
-    const items = STEP3_PROMPTS
-      .filter(p => (brainFields[p.key] || '').trim())
-      .map(p => `${p.prefix.replace('…', '')} ${brainFields[p.key].trim()}`)
-      .concat(brainFree.trim() ? [brainFree.trim()] : []);
+    // TODO: envoyer le contenu à l'IA pour le tri étape 4
+    const items = STEP3_CARDS
+      .filter(c => (brainFields[c.key] || '').trim())
+      .map(c => `${c.title.replace('…', '')} ${brainFields[c.key].trim()}`);
 
     setTriageLoading(true);
     setTriageError(null);
@@ -544,6 +722,16 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
       setTriageLoading(false);
     }
   };
+
+  const handleShowMoreCards = useCallback(() => {
+    setStep3ShowMore(true);
+    Animated.spring(step3MoreAnim, {
+      toValue: 1,
+      useNativeDriver: false,
+      tension: 50,
+      friction: 12,
+    }).start();
+  }, [step3MoreAnim]);
 
   const handleStep4Continue = async () => {
     const urgentItems = triage?.urgent || [];
@@ -883,49 +1071,121 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
     );
   };
 
-  const renderStep3 = () => (
+  const renderStep3NoWords = () => (
     <View>
       {renderBackBtn(2)}
-      {renderStepDots(3)}
-      <Text style={styles.stepTitle}>Sors tout ce qui tourne dans ta tête.</Text>
-      <Text style={styles.stepSub}>
-        Réponds à ce qui te parle. Tout est optionnel. Pas besoin d'être claire ou organisée.
-      </Text>
-
-      <View style={styles.list}>
-        {STEP3_PROMPTS.map(p => (
-          <View key={p.key} style={styles.brainField}>
-            <Text style={styles.brainFieldPrefix}>{p.prefix}</Text>
-            <TextInput
-              style={styles.brainFieldInput}
-              value={brainFields[p.key] || ''}
-              onChangeText={text => setBrainFields(prev => ({ ...prev, [p.key]: text }))}
-              placeholder="…"
-              placeholderTextColor={C.primaryMuted}
-              autoCapitalize="none"
-              multiline
-            />
-          </View>
-        ))}
-        <View style={styles.brainField}>
-          <Text style={styles.brainFieldPrefix}>Autre chose qui tourne…</Text>
-          <TextInput
-            style={styles.brainFieldInput}
-            value={brainFree}
-            onChangeText={setBrainFree}
-            placeholder="…"
-            placeholderTextColor={C.primaryMuted}
-            autoCapitalize="none"
-            multiline
-          />
+      <View style={styles.progressWrap}>
+        <Text style={styles.progressLabel}>Étape 3/6 · Décharge</Text>
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { flex: 3 }]} />
+          <View style={{ flex: 3 }} />
         </View>
       </View>
 
-      <TouchableOpacity style={styles.ctaBtn} onPress={handleStep3Submit} activeOpacity={0.82}>
-        <Text style={styles.ctaBtnText}>Voilà ce que j'ai</Text>
-      </TouchableOpacity>
+      <Text style={styles.bigTitle}>Pas grave. Tu n'as pas besoin d'expliquer.</Text>
+      <Text style={styles.step2Para}>Choisis juste ce qui prend le plus de place maintenant.</Text>
+
+      <View style={styles.list}>
+        {STEP3_NOWORDS_OPTIONS.map(opt => {
+          const isSelected = step3NoWordsChoice === opt.key;
+          return (
+            <TouchableOpacity
+              key={opt.key}
+              style={[styles.nowordsCard, isSelected && styles.nowordsCardActive]}
+              onPress={() => setStep3NoWordsChoice(isSelected ? null : opt.key)}
+              activeOpacity={0.75}>
+              <Text style={[styles.nowordsLabel, isSelected && styles.nowordsLabelActive]}>
+                {isSelected ? '✓ ' : ''}{opt.label}
+              </Text>
+              <Text style={styles.nowordsDesc}>{opt.desc}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {step3NoWordsChoice && (
+        <TouchableOpacity style={styles.ctaBtn} onPress={handleStep3NoWords} activeOpacity={0.82}>
+          <Text style={styles.ctaBtnText}>Continuer avec ça</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
+
+  const renderStep3 = () => {
+    if (step3View === 'nowords') return renderStep3NoWords();
+
+    const filledCount = STEP3_CARDS.filter(c => (brainFields[c.key] || '').trim()).length;
+    const counterText =
+      filledCount === 0 ? 'Une carte suffit.' :
+      filledCount === 1 ? '1 pensée déposée. C\'est déjà suffisant.' :
+      filledCount === 2 ? '2 pensées déposées. Tu peux continuer ou t\'arrêter là.' :
+      '3 pensées déposées. On peut trier après.';
+
+    const moreMaxH = step3MoreAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 2000] });
+    const moreOpacity = step3MoreAnim.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 0, 1] });
+
+    return (
+      <View>
+        {renderBackBtn(2)}
+        <View style={styles.progressWrap}>
+          <Text style={styles.progressLabel}>Étape 3/6 · Décharge</Text>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { flex: 3 }]} />
+            <View style={{ flex: 3 }} />
+          </View>
+        </View>
+
+        <Text style={styles.bigTitle}>Dépose ici ce qui tourne dans ta tête.</Text>
+        <Text style={styles.step2Para}>
+          Ton cerveau essaie peut-être de tout garder ouvert en même temps. Ici, tu peux poser ce qui prend de la place, même si c'est flou, répétitif ou désordonné. Pas besoin de vider toute ta vie. Quelques mots suffisent.
+        </Text>
+        <Text style={styles.step2Mini}>Choisis une phrase qui te parle.</Text>
+
+        <Text style={styles.step3Counter}>{counterText}</Text>
+
+        <View style={styles.list}>
+          {STEP3_CARDS.slice(0, 4).map(card => (
+            <BrainCard
+              key={card.key}
+              card={card}
+              value={brainFields[card.key] || ''}
+              onChange={text => setBrainFields(prev => ({ ...prev, [card.key]: text }))}
+            />
+          ))}
+        </View>
+
+        {!step3ShowMore && (
+          <TouchableOpacity style={styles.showMoreBtn} onPress={handleShowMoreCards} activeOpacity={0.75}>
+            <Text style={styles.showMoreBtnText}>Voir d'autres phrases</Text>
+          </TouchableOpacity>
+        )}
+
+        <Animated.View style={{ maxHeight: moreMaxH, overflow: 'hidden', opacity: moreOpacity }}>
+          <View style={[styles.list, { marginTop: 0 }]}>
+            {STEP3_CARDS.slice(4).map(card => (
+              <BrainCard
+                key={card.key}
+                card={card}
+                value={brainFields[card.key] || ''}
+                onChange={text => setBrainFields(prev => ({ ...prev, [card.key]: text }))}
+              />
+            ))}
+          </View>
+        </Animated.View>
+
+        <TouchableOpacity style={[styles.ctaBtn, { marginTop: 24 }]} onPress={handleStep3Submit} activeOpacity={0.82}>
+          <Text style={styles.ctaBtnText}>Voilà ce que j'ai</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.helpBtn}
+          onPress={() => setStep3View('nowords')}
+          activeOpacity={0.75}>
+          <Text style={styles.helpBtnText}>Je n'ai pas les mots, continuer</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   const renderStep4 = () => (
     <View>
@@ -1202,6 +1462,7 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
           style={{ flex: 1 }}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}>
           <Animated.View style={{ opacity: fadeAnim, transform: [{ translateX: slideAnim }] }}>
             {step === 1 && renderStep1()}
@@ -1219,7 +1480,7 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
-  scroll: { paddingHorizontal: 20, paddingTop: 52, paddingBottom: 60, flexGrow: 1 },
+  scroll: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 60, flexGrow: 1 },
 
   backBtn: { alignSelf: 'flex-start', marginBottom: 16 },
   backText: { fontSize: 16, color: C.primary, fontWeight: '600' },
@@ -1297,13 +1558,22 @@ const styles = StyleSheet.create({
   chevron: { fontSize: 22, color: C.primaryMuted, transform: [{ rotate: '0deg' }], marginLeft: 8 },
   chevronOpen: { transform: [{ rotate: '90deg' }] },
 
-  // Step 3 — brain dump
-  brainField: {
-    backgroundColor: C.surface, borderRadius: 14,
-    padding: 14, borderWidth: 1, borderColor: C.border,
+  // Step 3
+  step3Counter: {
+    fontSize: 13, color: C.textSub, textAlign: 'center',
+    marginBottom: 14, fontStyle: 'italic',
   },
-  brainFieldPrefix: { fontSize: 13, color: C.primary, fontWeight: '700', marginBottom: 6 },
-  brainFieldInput: { fontSize: 15, color: C.text, minHeight: 36, lineHeight: 22 },
+  showMoreBtn: { alignItems: 'center', paddingVertical: 12 },
+  showMoreBtnText: { fontSize: 14, color: C.primary, fontWeight: '600', textDecorationLine: 'underline' },
+  nowordsCard: {
+    backgroundColor: C.surface, borderRadius: 14,
+    paddingVertical: 14, paddingHorizontal: 16,
+    borderWidth: 1.5, borderColor: C.border,
+  },
+  nowordsCardActive: { backgroundColor: C.primaryLight, borderColor: C.primary },
+  nowordsLabel: { fontSize: 15, fontWeight: '700', color: C.text, marginBottom: 3 },
+  nowordsLabelActive: { color: C.primary },
+  nowordsDesc: { fontSize: 13, color: C.textSub, lineHeight: 18 },
 
   // Loading
   loadingBlock: { alignItems: 'center', paddingVertical: 48, gap: 14 },

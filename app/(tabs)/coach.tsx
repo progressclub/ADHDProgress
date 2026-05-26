@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SaturationFlow from '@/components/SaturationFlow';
+import SaturationDiscovery from '@/components/SaturationDiscovery';
 
 type Step = 1 | 2;
 type TimeChoice = 'Mode Express' | 'Mode Découverte' | null;
@@ -211,6 +212,7 @@ export default function CoachScreen() {
   const [timeChoice, setTimeChoice] = useState<TimeChoice>(null);
   const [openEmotion, setOpenEmotion] = useState<string | null>(null);
   const [showFlow, setShowFlow] = useState(false);
+  const [showDiscovery, setShowDiscovery] = useState(false);
 
   const handleTimeChoice = (choice: Exclude<TimeChoice, null>) => {
     setTimeChoice(choice);
@@ -223,7 +225,11 @@ export default function CoachScreen() {
 
   const handleCta = (key: string) => {
     if (key === 'saturation' && timeChoice) {
-      setShowFlow(true);
+      if (timeChoice === 'Mode Express') {
+        setShowFlow(true);
+      } else {
+        setShowDiscovery(true);
+      }
     }
   };
 
@@ -302,6 +308,20 @@ export default function CoachScreen() {
             }}
           />
         )}
+      </Modal>
+
+      <Modal
+        visible={showDiscovery}
+        animationType="slide"
+        onRequestClose={() => setShowDiscovery(false)}>
+        <SaturationDiscovery
+          onBack={() => setShowDiscovery(false)}
+          onExpressFlow={() => {
+            setShowDiscovery(false);
+            setTimeChoice('Mode Express');
+            setShowFlow(true);
+          }}
+        />
       </Modal>
     </SafeAreaView>
   );

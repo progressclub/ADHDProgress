@@ -1190,7 +1190,16 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
   const renderStep4 = () => (
     <View>
       {renderBackBtn(3)}
-      {renderStepDots(4)}
+      <View style={styles.progressWrap}>
+        <Text style={styles.progressLabel}>Étape 4/6 · Tri</Text>
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { flex: 4 }]} />
+          <View style={{ flex: 2 }} />
+        </View>
+      </View>
+
+      <Text style={styles.bigTitle}>On fait le tri.</Text>
+      <Text style={styles.step2Para}>Ce n'est pas tout urgent. Regarde ce qui compte vraiment maintenant.</Text>
 
       {triageLoading && (
         <View style={styles.loadingBlock}>
@@ -1264,9 +1273,15 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
   const renderStep5 = () => (
     <View>
       {renderBackBtn(4)}
-      {renderStepDots(5)}
-      <Text style={styles.stepTitle}>Une seule action maintenant. Pas une mission.</Text>
-      <Text style={styles.stepSub}>Choisis celle qui te semble la plus légère.</Text>
+      <View style={styles.progressWrap}>
+        <Text style={styles.progressLabel}>Étape 5/6 · Action</Text>
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { flex: 5 }]} />
+          <View style={{ flex: 1 }} />
+        </View>
+      </View>
+      <Text style={styles.bigTitle}>Une seule action.</Text>
+      <Text style={styles.step2Para}>Pas une mission. Choisis celle qui te semble la plus légère.</Text>
 
       {actionsLoading && (
         <View style={styles.loadingBlock}>

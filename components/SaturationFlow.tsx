@@ -1127,6 +1127,18 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
     return (
       <View>
         {renderBackBtn(2)}
+
+        {/* DEV ONLY — à supprimer avant la mise en production */}
+        <TouchableOpacity
+          onPress={() => advanceTo(4)}
+          style={{ alignSelf: 'flex-end', marginBottom: 8 }}
+          activeOpacity={0.7}>
+          <Text style={{ fontSize: 12, color: C.textSub, borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+            ⚡ Skip → Étape 4
+          </Text>
+        </TouchableOpacity>
+        {/* END DEV ONLY */}
+
         <View style={styles.progressWrap}>
           <Text style={styles.progressLabel}>Étape 3/6 · Décharge</Text>
           <View style={styles.progressTrack}>

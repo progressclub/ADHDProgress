@@ -12,7 +12,8 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { BellOff, Sun, VolumeX, PanelLeftClose, DoorOpen, Shirt, ListTodo, Cloud, Anchor, Layers, Heart, BatteryLow, Sparkles, Feather } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -374,7 +375,6 @@ const timerScreenStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.bg,
-    paddingTop: 8,
     paddingHorizontal: 20,
     paddingBottom: 40,
   },
@@ -541,24 +541,35 @@ const step3CardStyles = StyleSheet.create({
   body: { backgroundColor: C.expandBg, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14 },
   input: {
     fontSize: 14, color: C.text, lineHeight: 22,
-    minHeight: 60, paddingVertical: 4,
-    textAlignVertical: 'top',
+    paddingVertical: 4, paddingBottom: 8, minHeight: 40,
   },
   micro: { fontSize: 12, color: C.primary, marginTop: 8, lineHeight: 17, fontStyle: 'italic' },
+  chipsWrap: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    gap: 8, marginBottom: 10,
+  },
+  chip: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: C.primaryLight, borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 6, gap: 6,
+  },
+  chipText: { fontSize: 13, color: C.primary, fontWeight: '600' },
+  chipX: { fontSize: 11, color: C.primaryMuted, fontWeight: '700' },
 });
 
 function BrainCard({
   card,
-  value,
+  values,
   onChange,
 }: {
   card: Step3CardData;
-  value: string;
-  onChange: (text: string) => void;
+  values: string[];
+  onChange: (values: string[]) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [inputText, setInputText] = useState('');
   const anim = useRef(new Animated.Value(0)).current;
-  const hasContent = value.trim().length > 0;
+  const hasContent = values.length > 0;
 
   const toggle = () => {
     const next = !isOpen;
@@ -571,11 +582,23 @@ function BrainCard({
     }).start();
   };
 
-  const maxHeight = anim.interpolate({ inputRange: [0, 1], outputRange: [0, 300] });
+  const addChip = () => {
+    const text = inputText.trim();
+    if (!text) return;
+    onChange([...values, text]);
+    setInputText('');
+  };
+
+  const removeChip = (index: number) => {
+    onChange(values.filter((_, i) => i !== index));
+  };
+
+  const maxHeight = anim.interpolate({ inputRange: [0, 1], outputRange: [0, 500] });
   const opacity = anim.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 0, 1] });
 
   return (
-    <View style={[step3CardStyles.card, isOpen && step3CardStyles.cardOpen, !isOpen && hasContent && step3CardStyles.cardFilled]}>
+    <View
+      style={[step3CardStyles.card, isOpen && step3CardStyles.cardOpen, !isOpen && hasContent && step3CardStyles.cardFilled]}>
       <TouchableOpacity style={step3CardStyles.header} onPress={toggle} activeOpacity={0.75}>
         <card.IconComponent size={24} color={isOpen || hasContent ? C.primary : C.textSub} strokeWidth={1.8} />
         <View style={step3CardStyles.titleBlock}>
@@ -590,14 +613,31 @@ function BrainCard({
 
       <Animated.View style={{ maxHeight, overflow: 'hidden', opacity }}>
         <View style={step3CardStyles.body}>
+          {values.length > 0 && (
+            <View style={step3CardStyles.chipsWrap}>
+              {values.map((chip, i) => (
+                <View key={i} style={step3CardStyles.chip}>
+                  <Text style={step3CardStyles.chipText}>{chip}</Text>
+                  <TouchableOpacity
+                    onPress={() => removeChip(i)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    activeOpacity={0.6}>
+                    <Text style={step3CardStyles.chipX}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
           <TextInput
             style={step3CardStyles.input}
-            value={value}
-            onChangeText={onChange}
-            placeholder={card.placeholder}
+            value={inputText}
+            onChangeText={setInputText}
+            onSubmitEditing={addChip}
+            placeholder={values.length > 0 ? 'Ajouter un autre...' : card.placeholder}
             placeholderTextColor={C.primaryMuted}
             autoCapitalize="none"
-            multiline
+            returnKeyType="done"
+            blurOnSubmit={false}
           />
           <Text style={step3CardStyles.micro}>{card.microMessage}</Text>
         </View>
@@ -613,6 +653,7 @@ type Props = {
 
 export default function SaturationFlow({ timeChoice, onComplete }: Props) {
   const { todayTasks, persistTodayTasks } = useDayTasks();
+  const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState<FlowStep>(1);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -629,7 +670,7 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
   const [timer2Done, setTimer2Done] = useState(false);
   const timer2Ref = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const [brainFields, setBrainFields] = useState<Record<string, string>>({});
+  const [brainFields, setBrainFields] = useState<Record<string, string[]>>({});
   const [step3ShowMore, setStep3ShowMore] = useState(false);
   const step3MoreAnim = useRef(new Animated.Value(0)).current;
   const [step3View, setStep3View] = useState<'main' | 'nowords'>('main');
@@ -660,7 +701,6 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
       Animated.timing(slideAnim, { toValue: -30, duration: 160, useNativeDriver: true }),
     ]).start(() => {
       slideAnim.setValue(30);
-      scrollRef.current?.scrollTo({ y: 0, animated: false });
       setStep(newStep);
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
@@ -675,7 +715,6 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
       Animated.timing(slideAnim, { toValue: 30, duration: 160, useNativeDriver: true }),
     ]).start(() => {
       slideAnim.setValue(-30);
-      scrollRef.current?.scrollTo({ y: 0, animated: false });
       setStep(newStep);
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
@@ -697,9 +736,9 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
 
   const handleStep3Submit = async () => {
     // TODO: envoyer le contenu à l'IA pour le tri étape 4
-    const items = STEP3_CARDS
-      .filter(c => (brainFields[c.key] || '').trim())
-      .map(c => `${c.title.replace('…', '')} ${brainFields[c.key].trim()}`);
+    const items = STEP3_CARDS.flatMap(c =>
+      (brainFields[c.key] || []).filter(item => item.trim()).map(item => item.trim())
+    );
 
     setTriageLoading(true);
     setTriageError(null);
@@ -882,7 +921,8 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
     const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
     return (
-      <SafeAreaView style={timerScreenStyles.container} edges={['top']}>
+      <SafeAreaView style={[timerScreenStyles.container, { paddingTop: insets.top + 8 }]} edges={[]}>
+
         <Text style={timerScreenStyles.title}>{card.closedTitle}</Text>
         {!timer2Done ? (
           <>
@@ -893,6 +933,18 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
             <TouchableOpacity style={timerScreenStyles.backBtn} onPress={backToCards} activeOpacity={0.75}>
               <Text style={timerScreenStyles.backBtnText}>Choisir autre chose</Text>
             </TouchableOpacity>
+            {/* DEV ONLY — à supprimer avant la mise en production */}
+            {activeTimerCardKey === 'eau' && (
+              <TouchableOpacity
+                onPress={() => { backToCards(); advanceTo(3); }}
+                style={{ alignSelf: 'center', marginTop: 8 }}
+                activeOpacity={0.7}>
+                <Text style={{ fontSize: 12, color: C.textSub, borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                  ⚡ Skip → Étape 3
+                </Text>
+              </TouchableOpacity>
+            )}
+            {/* END DEV ONLY */}
           </>
         ) : (
           <ScrollView
@@ -1114,7 +1166,7 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
   const renderStep3 = () => {
     if (step3View === 'nowords') return renderStep3NoWords();
 
-    const filledCount = STEP3_CARDS.filter(c => (brainFields[c.key] || '').trim()).length;
+    const filledCount = STEP3_CARDS.filter(c => (brainFields[c.key] || []).length > 0).length;
     const counterText =
       filledCount === 0 ? 'Une carte suffit.' :
       filledCount === 1 ? '1 pensée déposée. C\'est déjà suffisant.' :
@@ -1160,8 +1212,8 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
             <BrainCard
               key={card.key}
               card={card}
-              value={brainFields[card.key] || ''}
-              onChange={text => setBrainFields(prev => ({ ...prev, [card.key]: text }))}
+              values={brainFields[card.key] || []}
+              onChange={vals => setBrainFields(prev => ({ ...prev, [card.key]: vals }))}
             />
           ))}
         </View>
@@ -1178,8 +1230,8 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
               <BrainCard
                 key={card.key}
                 card={card}
-                value={brainFields[card.key] || ''}
-                onChange={text => setBrainFields(prev => ({ ...prev, [card.key]: text }))}
+                values={brainFields[card.key] || []}
+                onChange={vals => setBrainFields(prev => ({ ...prev, [card.key]: vals }))}
               />
             ))}
           </View>
@@ -1481,20 +1533,39 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
     return renderTimerScreen() ?? null;
   }
 
+  if (step === 3) {
+    return (
+      <SafeAreaView style={styles.safe} edges={[]}>
+        <KeyboardAwareScrollView
+          ref={scrollRef as any}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          enableOnAndroid={true}
+          extraScrollHeight={80}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32, paddingTop: insets.top + 8 }}>
+          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateX: slideAnim }] }}>
+            {renderStep3()}
+          </Animated.View>
+        </KeyboardAwareScrollView>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <SafeAreaView style={styles.safe} edges={[]}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={insets.top}>
         <ScrollView
           ref={scrollRef}
           style={{ flex: 1 }}
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 8 }]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets={true}
           showsVerticalScrollIndicator={false}>
           <Animated.View style={{ opacity: fadeAnim, transform: [{ translateX: slideAnim }] }}>
             {step === 1 && renderStep1()}
             {step === 2 && renderStep2()}
-            {step === 3 && renderStep3()}
             {step === 4 && renderStep4()}
             {step === 5 && renderStep5()}
             {step === 6 && renderStep6()}
@@ -1507,7 +1578,7 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
-  scroll: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 60, flexGrow: 1 },
+  scroll: { paddingHorizontal: 20, paddingBottom: 20 },
 
   backBtn: { alignSelf: 'flex-start', marginBottom: 16 },
   backText: { fontSize: 16, color: C.primary, fontWeight: '600' },

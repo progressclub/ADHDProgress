@@ -975,7 +975,6 @@ export default function TachesScreen() {
           )}
         </View>
 
-        <View style={{ height: 48 }} />
       </ScrollView>
 
       {/* ════════════════════════════════════════════════

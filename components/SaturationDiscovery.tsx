@@ -1245,6 +1245,11 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
   const comboAnim = useRef(new Animated.Value(0)).current;
   const protectionSlide = useRef(new Animated.Value(800)).current;
 
+  // Step nav visibility
+  const [showStepNav, setShowStepNav] = useState(false);
+  const stepNavAnim = useRef(new Animated.Value(0)).current;
+  const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Step 4
   const [reflexes, setReflexes] = useState<string[]>([]);
   const [selectedReflex, setSelectedReflex] = useState<ReflexData | null>(null);
@@ -1379,6 +1384,17 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
     setSelectedReflex(null);
   };
 
+  const handleStepNavScroll = useCallback(() => {
+    setShowStepNav(true);
+    Animated.timing(stepNavAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+    if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+    navTimeoutRef.current = setTimeout(() => {
+      Animated.timing(stepNavAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
+        setShowStepNav(false);
+      });
+    }, 2000);
+  }, []);
+
   const handleStep1Scroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       if (step1Read) return;
@@ -1491,14 +1507,13 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
           <Text style={s.backText}>{'< Retour au hub'}</Text>
         </TouchableOpacity>
       </View>
-      <StepNav current={view} completed={completedSteps} onNavigate={goTo} />
       {scrollable ? (
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={[s.stepScroll, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          onScroll={onScroll}
+          onScroll={e => { handleStepNavScroll(); onScroll?.(e); }}
           scrollEventThrottle={16}>
           {children}
           {footerExtra}
@@ -1569,7 +1584,9 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={[s.stepScroll, { paddingBottom: insets.bottom + 140 }]}
-          showsVerticalScrollIndicator={false}>
+          showsVerticalScrollIndicator={false}
+          onScroll={handleStepNavScroll}
+          scrollEventThrottle={16}>
           <Text style={s.stepTitle}>Comment je sais que je commence à saturer ?</Text>
           <Text style={s.stepSubtitle}>
             Ces signaux apparaissent parfois avant que tu comprennes ce qui se passe. Explore ceux qui te ressemblent.
@@ -1779,7 +1796,9 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={[s.stepScroll, { paddingBottom: insets.bottom + 140 }]}
-          showsVerticalScrollIndicator={false}>
+          showsVerticalScrollIndicator={false}
+          onScroll={handleStepNavScroll}
+          scrollEventThrottle={16}>
           <Text style={s.stepTitle}>Qu'est-ce que je fais quand je sature ?</Text>
           <Text style={s.stepSubtitle}>
             Ces réflexes ne sont pas des défauts. Ce sont des tentatives de protection. Certains soulagent sur le moment, mais peuvent aggraver après.
@@ -1893,6 +1912,14 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
       {view === 'step3' && renderStep3()}
       {view === 'step4' && renderStep4()}
       {view === 'step5' && renderStep5()}
+
+      {view !== 'hub' && (
+        <Animated.View
+          style={[s.floatingStepNav, { opacity: stepNavAnim }]}
+          pointerEvents={showStepNav ? 'auto' : 'none'}>
+          <StepNav current={view} completed={completedSteps} onNavigate={goTo} />
+        </Animated.View>
+      )}
 
       {selectedTrigger && (
         <TriggerModal
@@ -2008,8 +2035,20 @@ const s = StyleSheet.create({
   backText: { fontSize: 14, color: C.primary, fontWeight: '600' },
   subHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border },
 
-  // Step nav
-  stepNavWrap: { alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.surface },
+  // Step nav — floating pill
+  floatingStepNav: { position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center', zIndex: 90 },
+  stepNavWrap: {
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+  },
   stepCirclesRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   stepLine: { width: 28, height: 1.5, backgroundColor: C.border },
   stepLineDone: { backgroundColor: C.primaryMuted },

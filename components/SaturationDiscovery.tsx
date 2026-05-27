@@ -750,6 +750,14 @@ const NEXT_LABEL: Partial<Record<SubView, string>> = {
   step4: 'Construire',
 };
 
+const STEP_TITLES: Partial<Record<SubView, string>> = {
+  step1: 'Pourquoi tout devient trop ?',
+  step2: 'Comment je sais que je commence à saturer ?',
+  step3: 'Qu\'est-ce qui remplit mon système ?',
+  step4: 'Qu\'est-ce que je fais quand je sature ?',
+  step5: 'Mon plan anti-saturation',
+};
+
 // ─── EyeAnimation ─────────────────────────────────────────────────────────────
 
 const EYE_W = 72;
@@ -1507,6 +1515,18 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
           <Text style={s.backText}>{'< Retour au hub'}</Text>
         </TouchableOpacity>
       </View>
+      {(() => {
+        const stepMeta = STEPS.find(st => st.key === view);
+        if (!stepMeta) return null;
+        return (
+          <View style={s.stickyStepHeader}>
+            <Text style={s.stickyStepText} numberOfLines={1} ellipsizeMode="tail">
+              <Text style={s.stickyStepNum}>Étape {stepMeta.index}</Text>
+              {' · '}{STEP_TITLES[view] ?? stepMeta.label}
+            </Text>
+          </View>
+        );
+      })()}
       {scrollable ? (
         <ScrollView
           style={{ flex: 1 }}
@@ -2034,6 +2054,20 @@ const s = StyleSheet.create({
   backBtn: { minWidth: 80 },
   backText: { fontSize: 14, color: C.primary, fontWeight: '600' },
   subHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border },
+  stickyStepHeader: {
+    backgroundColor: C.surface,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.04)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  stickyStepNum: { fontSize: 13, fontWeight: '700', color: C.primary },
+  stickyStepText: { fontSize: 13, color: C.textSub, fontWeight: '500' },
 
   // Step nav — floating pill
   floatingStepNav: { position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center', zIndex: 90 },

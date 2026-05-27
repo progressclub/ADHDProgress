@@ -12,6 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 import { Brain, Activity, Zap, RefreshCw, Shield, X, Check, Volume2, BatteryLow, Smartphone, Settings, Users } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -750,11 +751,19 @@ const NEXT_LABEL: Partial<Record<SubView, string>> = {
   step4: 'Construire',
 };
 
-const STEP_TITLES: Partial<Record<SubView, string>> = {
-  step1: 'Pourquoi tout devient trop ?',
-  step2: 'Comment je sais que je commence à saturer ?',
-  step3: 'Qu\'est-ce qui remplit mon système ?',
-  step4: 'Qu\'est-ce que je fais quand je sature ?',
+const STEP_LABELS: Partial<Record<SubView, string>> = {
+  step1: 'Comprendre · Étape 1/5',
+  step2: 'Repérer · Étape 2/5',
+  step3: 'Identifier · Étape 3/5',
+  step4: 'Observer · Étape 4/5',
+  step5: 'Construire · Étape 5/5',
+};
+
+const STEP_SHORT_TITLES: Partial<Record<SubView, string>> = {
+  step1: 'Le trop-plein expliqué',
+  step2: 'Mes signaux de saturation',
+  step3: 'Mes déclencheurs',
+  step4: 'Mes réflexes automatiques',
   step5: 'Mon plan anti-saturation',
 };
 
@@ -1506,25 +1515,20 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
     footerExtra?: React.ReactNode;
   }) => (
     <View style={{ flex: 1 }}>
-      <View style={s.subHeader}>
-        <TouchableOpacity onPress={() => goTo('hub')} style={s.backBtn}>
-          <Text style={s.backText}>{'< Retour au hub'}</Text>
-        </TouchableOpacity>
-      </View>
-      {(() => {
-        const stepMeta = STEPS.find(st => st.key === view);
-        if (!stepMeta) return null;
-        return (
-          <View style={s.stickyStepHeader}>
-            <Text style={s.stickyStepLabel}>
-              {'Étape ' + stepMeta.index + ' · ' + stepMeta.label}
-            </Text>
-            <Text style={s.stickyStepTitle} numberOfLines={2}>
-              {STEP_TITLES[view] ?? stepMeta.label}
-            </Text>
-          </View>
-        );
-      })()}
+      <BlurView intensity={18} tint="light" style={s.stickyHeader}>
+        <View style={s.stickyHeaderRow}>
+          <TouchableOpacity
+            onPress={() => goTo('hub')}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={s.backText}>{'‹ Retour au hub'}</Text>
+          </TouchableOpacity>
+          {STEP_LABELS[view] && <Text style={s.stickyLabel}>{STEP_LABELS[view]}</Text>}
+        </View>
+        {STEP_SHORT_TITLES[view] && (
+          <Text style={s.stickyTitle} numberOfLines={1}>{STEP_SHORT_TITLES[view]}</Text>
+        )}
+      </BlurView>
       {scrollable ? (
         <ScrollView
           style={{ flex: 1 }}
@@ -2050,28 +2054,32 @@ const s = StyleSheet.create({
 
   // Back / navigation
   backBtn: { minWidth: 80 },
-  backText: { fontSize: 14, color: C.primary, fontWeight: '600' },
-  subHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border },
-  stickyStepHeader: {
-    backgroundColor: C.bg,
+  backText: { fontSize: 15, color: C.primary, fontWeight: '600' },
+  // Sticky step header (BlurView)
+  stickyHeader: {
+    backgroundColor: 'rgba(237,233,254,0.82)',
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.07)',
+    borderBottomColor: C.border,
   },
-  stickyStepLabel: {
-    fontSize: 11,
+  stickyHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  stickyLabel: {
+    fontSize: 13,
     fontWeight: '600',
-    color: C.primary,
-    marginBottom: 3,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    color: '#8E85C0',
   },
-  stickyStepTitle: {
-    fontSize: 15,
+  stickyTitle: {
+    fontSize: 19,
     fontWeight: '700',
     color: C.text,
+    letterSpacing: -0.3,
   },
 
   // Step nav — floating pill

@@ -1061,7 +1061,6 @@ function StepNav({
   completed: Set<SubView>;
   onNavigate: (v: SubView) => void;
 }) {
-  const currentStep = STEPS.find(s => s.key === current);
   return (
     <View style={s.stepNavWrap}>
       <View style={s.stepCirclesRow}>
@@ -1085,9 +1084,6 @@ function StepNav({
           );
         })}
       </View>
-      <Text style={s.stepLabel}>
-        Étape {currentStep?.index ?? ''}/5 · {currentStep?.label ?? ''}
-      </Text>
     </View>
   );
 }
@@ -1520,9 +1516,11 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
         if (!stepMeta) return null;
         return (
           <View style={s.stickyStepHeader}>
-            <Text style={s.stickyStepText} numberOfLines={1} ellipsizeMode="tail">
-              <Text style={s.stickyStepNum}>Étape {stepMeta.index}</Text>
-              {' · '}{STEP_TITLES[view] ?? stepMeta.label}
+            <Text style={s.stickyStepLabel}>
+              {'Étape ' + stepMeta.index + ' · ' + stepMeta.label}
+            </Text>
+            <Text style={s.stickyStepTitle} numberOfLines={2}>
+              {STEP_TITLES[view] ?? stepMeta.label}
             </Text>
           </View>
         );
@@ -2055,19 +2053,26 @@ const s = StyleSheet.create({
   backText: { fontSize: 14, color: C.primary, fontWeight: '600' },
   subHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border },
   stickyStepHeader: {
-    backgroundColor: C.surface,
+    backgroundColor: C.bg,
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingTop: 8,
+    paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.04)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    borderBottomColor: 'rgba(0,0,0,0.07)',
   },
-  stickyStepNum: { fontSize: 13, fontWeight: '700', color: C.primary },
-  stickyStepText: { fontSize: 13, color: C.textSub, fontWeight: '500' },
+  stickyStepLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: C.primary,
+    marginBottom: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  stickyStepTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: C.text,
+  },
 
   // Step nav — floating pill
   floatingStepNav: { position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center', zIndex: 90 },
@@ -2091,7 +2096,6 @@ const s = StyleSheet.create({
   stepCircleDone: { backgroundColor: C.primaryLight },
   stepCircleNum: { fontSize: 12, fontWeight: '700', color: C.textSub },
   stepCircleNumActive: { color: C.surface },
-  stepLabel: { fontSize: 12, color: C.textSub, fontWeight: '600' },
 
   // Step shared
   stepScroll: { paddingHorizontal: 16, paddingTop: 20 },

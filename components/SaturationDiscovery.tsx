@@ -10,9 +10,11 @@ import {
   NativeSyntheticEvent,
   Animated,
   Modal,
+  Easing,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Brain, Activity, Zap, RefreshCw, Shield, X, Check, Volume2, BatteryLow, Smartphone, Settings, Users } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -22,6 +24,8 @@ type SubView = 'hub' | 'step1' | 'step2' | 'step3' | 'step4' | 'step5';
 type SignalStatus = 'frequent' | 'today';
 type SignalsMap = Record<string, SignalStatus>;
 type TriggersMap = Record<string, 'frequent' | 'today'>;
+type ReflexStatus = 'recognized' | 'not_me';
+type ReflexesMap = Record<string, ReflexStatus>;
 
 type Props = {
   onBack: () => void;
@@ -56,53 +60,24 @@ const C = {
   green: '#16A34A',
 };
 
+const S1 = {
+  bg: '#FAFAF7',
+  text: '#1A1A1A',
+  accent: '#7B5EA7',
+  line: '#E0DDD5',
+  muted: '#999999',
+  brown: '#2A1A0E',
+};
+
 // ─── Step 1 data ──────────────────────────────────────────────────────────────
 
-type Step1Card = { key: string; title: string; body: string; phrase: string };
-
-const STEP1_CARDS: Step1Card[] = [
-  {
-    key: 'volonte',
-    title: "Ce n'est pas un manque de volonté",
-    body: "La saturation touche les fonctions exécutives : trier, décider, inhiber, planifier. Ces fonctions s'épuisent comme des muscles. Ce n'est pas un trait de caractère.",
-    phrase: "Ce n'est pas moi qui flanche. C'est mon système qui est plein.",
-  },
-  {
-    key: 'urgent',
-    title: 'Pourquoi tout semble urgent',
-    body: "Quand ton cerveau est saturé, il trie moins bien. Une tâche importante, une notification et une pensée anxieuse peuvent prendre la même place. Ce n'est pas que tout est urgent — c'est que tout est devenu bruyant.",
-    phrase: "Tout est bruyant, mais tout n'est pas urgent.",
-  },
-  {
-    key: 'choisir',
-    title: "Pourquoi tu n'arrives plus à choisir",
-    body: "Choisir demande de comparer, d'éliminer, de décider. Ces trois étapes utilisent exactement les fonctions qui s'éteignent en saturation. Ce n'est pas de la faiblesse. C'est de la surcharge.",
-    phrase: "Je ne peux pas choisir vite quand mon système est plein.",
-  },
-  {
-    key: 'todo',
-    title: "Pourquoi une to-do list peut empirer",
-    body: "Faire une liste demande de prioriser — la compétence exacte qui manque en saturation. Pire : voir toute la liste peut amplifier la sensation que tout est urgent. Parfois, moins d'informations visibles aide plus.",
-    phrase: "Parfois, moins d'informations visibles aide plus.",
-  },
-  {
-    key: 'irritable',
-    title: 'Pourquoi tu deviens irritable',
-    body: "En saturation, ton seuil de tolérance baisse. Une petite demande peut déclencher une réaction forte, non parce que tu es dramatique, mais parce que ton système est déjà plein.",
-    phrase: "Ma réaction n'est pas disproportionnée. Mon système est débordé.",
-  },
-  {
-    key: 'telephone',
-    title: 'Pourquoi tu cherches ton téléphone',
-    body: "Le téléphone donne une stimulation simple, immédiate, sans décision. Ton cerveau le cherche comme une sortie au trop-plein, pas par mauvaise volonté.",
-    phrase: "Je ne cherche pas mon téléphone. Je cherche du soulagement.",
-  },
-  {
-    key: 'annuler',
-    title: 'Pourquoi tu veux tout annuler',
-    body: "Quand la saturation est forte, annuler donne une impression de soulagement immédiat parce que ça réduit le nombre de choses à gérer. Mais ce n'est pas forcément une décision à prendre maintenant.",
-    phrase: "Je peux réduire maintenant, décider plus tard.",
-  },
+const STEP1_SECONDARY = [
+  { key: 'urgent',    label: 'Pourquoi tout semble urgent ?' },
+  { key: 'choisir',  label: "Pourquoi tu n'arrives plus à choisir ?" },
+  { key: 'todo',     label: 'Pourquoi une to-do list peut empirer' },
+  { key: 'irritable',label: 'Pourquoi tu deviens irritable' },
+  { key: 'telephone',label: 'Pourquoi tu cherches ton téléphone' },
+  { key: 'annuler',  label: 'Pourquoi tu veux tout annuler' },
 ];
 
 // ─── Signals ─────────────────────────────────────────────────────────────────
@@ -855,12 +830,12 @@ function SignalModal({ signal, currentStatus, onClose, onSave }: SignalModalProp
 
 type ReflexModalProps = {
   reflex: ReflexData;
-  recognized: boolean;
+  status: ReflexStatus | null;
   onClose: () => void;
-  onRecognize: (key: string) => void;
+  onToggle: (key: string, action: ReflexStatus) => void;
 };
 
-function ReflexModal({ reflex, recognized, onClose, onRecognize }: ReflexModalProps) {
+function ReflexModal({ reflex, status, onClose, onToggle }: ReflexModalProps) {
   return (
     <Modal visible transparent animationType="fade">
       <TouchableOpacity activeOpacity={1} style={s.modalBackdrop} onPress={onClose}>
@@ -881,15 +856,20 @@ function ReflexModal({ reflex, recognized, onClose, onRecognize }: ReflexModalPr
           </ScrollView>
           <View style={s.modalBtns}>
             <TouchableOpacity
-              style={[s.modalBtn, recognized && s.modalBtnActive]}
-              onPress={() => onRecognize(reflex.key)}
+              style={[s.modalBtn, status === 'recognized' && s.modalBtnActive]}
+              onPress={() => onToggle(reflex.key, 'recognized')}
               activeOpacity={0.8}>
-              <Text style={[s.modalBtnText, recognized && s.modalBtnTextActive]}>
-                {recognized ? 'Reconnu ✓' : 'Je me reconnais là'}
+              <Text style={[s.modalBtnText, status === 'recognized' && s.modalBtnTextActive]}>
+                {status === 'recognized' ? 'Reconnu ✓' : 'Je me reconnais là'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.modalGhost} onPress={onClose} activeOpacity={0.7}>
-              <Text style={s.modalGhostText}>Pas moi</Text>
+            <TouchableOpacity
+              style={[s.modalBtn, status === 'not_me' && s.modalBtnActive]}
+              onPress={() => onToggle(reflex.key, 'not_me')}
+              activeOpacity={0.8}>
+              <Text style={[s.modalBtnText, status === 'not_me' && s.modalBtnTextActive]}>
+                Pas moi
+              </Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -1063,28 +1043,27 @@ function ProtectionPage({ triggers, protectionActions, phrase, setPhrase, savedM
 
 function StepNav({
   current,
-  completed,
   onNavigate,
 }: {
   current: SubView;
-  completed: Set<SubView>;
   onNavigate: (v: SubView) => void;
 }) {
+  const activeIndex = STEPS.findIndex(s => s.key === current);
   return (
     <View style={s.stepNavWrap}>
       <View style={s.stepCirclesRow}>
         {STEPS.map((step, i) => {
-          const isActive = step.key === current;
-          const isDone = completed.has(step.key);
+          const isActive = i === activeIndex;
+          const isPast = i < activeIndex;
           return (
             <React.Fragment key={step.key}>
-              {i > 0 && <View style={[s.stepLine, isDone && s.stepLineDone]} />}
+              {i > 0 && <View style={[s.stepLine, isPast && s.stepLineDone]} />}
               <TouchableOpacity
-                style={[s.stepCircle, isActive && s.stepCircleActive, isDone && !isActive && s.stepCircleDone]}
+                style={[s.stepCircle, (isActive || isPast) && s.stepCircleActive]}
                 onPress={() => onNavigate(step.key)}
                 activeOpacity={0.75}>
-                {isDone && !isActive ? (
-                  <Check size={12} color={C.primary} />
+                {isPast ? (
+                  <Check size={12} color="#fff" />
                 ) : (
                   <Text style={[s.stepCircleNum, isActive && s.stepCircleNumActive]}>{step.index}</Text>
                 )}
@@ -1107,11 +1086,14 @@ function PortraitCard({
 }: {
   frequentSignals: string[];
   triggers: TriggersMap;
-  reflexes: string[];
+  reflexes: ReflexesMap;
   firstAction: string;
 }) {
   const allTriggers = TRIGGER_FAMILIES.flatMap(f => f.triggers);
   const triggerKeys = Object.keys(triggers);
+  const recognizedReflexKeys = Object.entries(reflexes)
+    .filter(([, v]) => v === 'recognized')
+    .map(([k]) => k);
 
   return (
     <View style={s.portrait}>
@@ -1155,11 +1137,11 @@ function PortraitCard({
         )}
       </PortraitRow>
       <PortraitRow label="Ce que je fais automatiquement :">
-        {reflexes.length === 0 ? (
+        {recognizedReflexKeys.length === 0 ? (
           <Text style={s.portraitDash}>—</Text>
         ) : (
           <View style={s.portraitChips}>
-            {reflexes.map(k => {
+            {recognizedReflexKeys.map(k => {
               const r = REFLEXES.find(r => r.key === k);
               return r ? (
                 <View key={k} style={s.portraitChip}>
@@ -1239,8 +1221,12 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
 
   // Step 1
   const [step1Read, setStep1Read] = useState(false);
-  const [openStep1Card, setOpenStep1Card] = useState<string | null>(null);
-  const [likedCards, setLikedCards] = useState<string[]>([]);
+  const [step1Modal, setStep1Modal] = useState(false);
+  const [step1SubPage, setStep1SubPage] = useState<string | null>(null);
+  const [hasUnderstoodIntro, setHasUnderstoodIntro] = useState(false);
+  const step1ArrowX = useRef(new Animated.Value(0)).current;
+  const step1ModalAnim = useRef(new Animated.Value(0)).current;
+  const step1ListAnim = useRef(new Animated.Value(0)).current;
 
   // Step 2
   const [signals, setSignals] = useState<SignalsMap>({});
@@ -1259,12 +1245,11 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
   const protectionSlide = useRef(new Animated.Value(800)).current;
 
   // Step nav visibility
-  const [showStepNav, setShowStepNav] = useState(false);
-  const stepNavAnim = useRef(new Animated.Value(0)).current;
-  const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stepNavOpacity = useRef(new Animated.Value(0)).current;
+  const hideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Step 4
-  const [reflexes, setReflexes] = useState<string[]>([]);
+  const [reflexes, setReflexes] = useState<ReflexesMap>({});
   const [selectedReflex, setSelectedReflex] = useState<ReflexData | null>(null);
 
   // Step 5
@@ -1290,7 +1275,16 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
             setTriggers(parsed as TriggersMap);
           }
         }
-        if (ref) setReflexes(JSON.parse(ref));
+        if (ref) {
+          const parsedRef = JSON.parse(ref);
+          if (Array.isArray(parsedRef)) {
+            const converted: ReflexesMap = {};
+            (parsedRef as string[]).forEach(k => { converted[k] = 'recognized'; });
+            setReflexes(converted);
+          } else {
+            setReflexes(parsedRef as ReflexesMap);
+          }
+        }
         if (fa) setFirstAction(fa);
         if (ph) setPhrase(ph);
         if (prot) {
@@ -1321,14 +1315,14 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
     (step1Read ? 20 : 0) +
     (frequentSignals.length >= 3 ? 20 : 0) +
     (triggerCount >= 3 ? 20 : 0) +
-    (reflexes.length >= 2 ? 20 : 0) +
+    (Object.keys(reflexes).length >= 2 ? 20 : 0) +
     (firstAction.trim() && phrase.trim() ? 20 : 0);
 
   const completedSteps = new Set<SubView>([
     ...(step1Read ? ['step1' as SubView] : []),
     ...(Object.keys(signals).length > 0 ? ['step2' as SubView] : []),
     ...(triggerCount > 0 ? ['step3' as SubView] : []),
-    ...(reflexes.length > 0 ? ['step4' as SubView] : []),
+    ...(Object.keys(reflexes).length > 0 ? ['step4' as SubView] : []),
     ...(firstAction.trim() || phrase.trim() ? ['step5' as SubView] : []),
   ]);
 
@@ -1387,24 +1381,52 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
     setTimeout(() => setSavedMsg(false), 2000);
   };
 
-  const recognizeReflex = (key: string) => {
+  const toggleReflex = (key: string, action: ReflexStatus) => {
     setReflexes(prev => {
-      if (prev.includes(key)) return prev;
-      const next = [...prev, key];
+      const next = { ...prev };
+      if (next[key] === action) {
+        delete next[key];
+      } else {
+        next[key] = action;
+      }
       AsyncStorage.setItem(SK.reflexes, JSON.stringify(next));
       return next;
     });
     setSelectedReflex(null);
   };
 
+  // Modal open animation
+  useEffect(() => {
+    if (step1Modal) {
+      step1ModalAnim.setValue(0);
+      Animated.spring(step1ModalAnim, { toValue: 1, tension: 80, friction: 9, useNativeDriver: true }).start();
+    }
+  }, [step1Modal]);
+
+  const closeStep1Modal = (understood = false) => {
+    Animated.timing(step1ModalAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setStep1Modal(false);
+      if (understood && !hasUnderstoodIntro) {
+        setHasUnderstoodIntro(true);
+        Animated.timing(step1ListAnim, {
+          toValue: 1, duration: 400, easing: Easing.out(Easing.ease), useNativeDriver: true,
+        }).start();
+      }
+    });
+  };
+
+  const animateArrowThenOpenModal = () => {
+    Animated.timing(step1ArrowX, { toValue: 4, duration: 200, useNativeDriver: true }).start(() => {
+      step1ArrowX.setValue(0);
+      setStep1Modal(true);
+    });
+  };
+
   const handleStepNavScroll = useCallback(() => {
-    setShowStepNav(true);
-    Animated.timing(stepNavAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
-    if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
-    navTimeoutRef.current = setTimeout(() => {
-      Animated.timing(stepNavAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
-        setShowStepNav(false);
-      });
+    if (hideTimeout.current) clearTimeout(hideTimeout.current);
+    Animated.timing(stepNavOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+    hideTimeout.current = setTimeout(() => {
+      Animated.timing(stepNavOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
     }, 2000);
   }, []);
 
@@ -1420,14 +1442,20 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
     [step1Read],
   );
 
-  const goTo = (v: SubView) => setView(v);
+  const goTo = (v: SubView) => {
+    setView(v);
+    if (v !== 'step1') {
+      setStep1Modal(false);
+      setStep1SubPage(null);
+    }
+  };
 
   // ── Hub ───────────────────────────────────────────────────────────────────
 
   const renderHub = () => (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={[s.hubScroll, { paddingBottom: insets.bottom + 32 }]}
+      contentContainerStyle={[s.hubScroll, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 32 }]}
       showsVerticalScrollIndicator={false}>
       <View style={s.hubHeader}>
         <TouchableOpacity onPress={onBack} style={s.backBtn}>
@@ -1483,7 +1511,7 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
         title="Observer"
         desc="Ce que tu fais automatiquement quand tu satures."
         tags={['réflexes', 'évitement', 'alternatives']}
-        status={reflexes.length > 0 ? `${reflexes.length} reconnus` : 'À explorer'}
+        status={Object.keys(reflexes).length > 0 ? `${Object.values(reflexes).filter(v => v === 'recognized').length} reconnus` : 'À explorer'}
         onPress={() => goTo('step4')}
       />
       <HubEntryCard
@@ -1515,7 +1543,7 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
     footerExtra?: React.ReactNode;
   }) => (
     <View style={{ flex: 1 }}>
-      <BlurView intensity={18} tint="light" style={s.stickyHeader}>
+      <BlurView intensity={18} tint="light" style={[s.stickyHeader, { paddingTop: insets.top + 8 }]}>
         <View style={s.stickyHeaderRow}>
           <TouchableOpacity
             onPress={() => goTo('hub')}
@@ -1545,7 +1573,9 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
         <>
           <View style={{ flex: 1 }}>{children}</View>
           {footerExtra}
-          <StepFooter nextLabel={nextLabel} nextView={nextView} onGoTo={goTo} bottomPad={insets.bottom} />
+          {nextLabel && nextView && (
+            <StepFooter nextLabel={nextLabel} nextView={nextView} onGoTo={goTo} bottomPad={insets.bottom} />
+          )}
         </>
       )}
     </View>
@@ -1553,50 +1583,154 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
 
   // ── Step 1 — Comprendre ───────────────────────────────────────────────────
 
-  const renderStep1 = () => (
-    <StepShell onScroll={handleStep1Scroll} nextLabel="Repérer" nextView="step2">
-      <Text style={s.stepTitle}>Pourquoi tout devient trop ?</Text>
-      <Text style={s.stepSubtitle}>
-        Quand tu satures, ce n'est pas juste du stress. C'est ton cerveau qui reçoit trop de signaux à la fois et n'arrive plus à trier ce qui compte vraiment.
-      </Text>
-      {STEP1_CARDS.map(card => {
-        const isOpen = openStep1Card === card.key;
-        const liked = likedCards.includes(card.key);
-        return (
-          <View key={card.key} style={s.s1Card}>
-            <TouchableOpacity
-              style={s.s1Header}
-              onPress={() => setOpenStep1Card(isOpen ? null : card.key)}
-              activeOpacity={0.75}>
-              <Text style={s.s1Title}>{card.title}</Text>
-              <Text style={[s.chevron, isOpen && s.chevronOpen]}>›</Text>
-            </TouchableOpacity>
-            {isOpen && (
-              <View style={s.s1Body}>
-                <Text style={s.s1BodyText}>{card.body}</Text>
-                <View style={s.s1PhraseBlock}>
-                  <Text style={s.s1Phrase}>{card.phrase}</Text>
-                </View>
+  const renderStep1Sub = (key: string) => {
+    const titles: Record<string, string> = {
+      urgent:    'Pourquoi tout semble urgent ?',
+      choisir:   "Pourquoi tu n'arrives plus à choisir ?",
+      todo:      'Pourquoi une to-do list peut empirer',
+      irritable: 'Pourquoi tu deviens irritable',
+      telephone: 'Pourquoi tu cherches ton téléphone',
+      annuler:   'Pourquoi tu veux tout annuler',
+    };
+    const title = titles[key] ?? key;
+
+    const renderUrgent = () => (
+      <>
+        <Text style={s.s1Para}>
+          {'Quand tu es en '}
+          <Text style={s.s1Accent}>saturation</Text>
+          {", ton cerveau peut perdre sa capacité à faire le tri finement. Une tâche importante, une notification, un message non répondu, une assiette dans l'évier, une pensée anxieuse ou une deadline peuvent toutes donner la même sensation intérieure : "}
+          <Text style={s.s1Italic}>{'« il faut gérer ça maintenant ».'}</Text>
+        </Text>
+        <Text style={s.s1Para}>
+          {"Le problème, ce n'est pas forcément qu'il y a une vraie urgence partout. C'est que ton système de tri est "}
+          <Text style={s.s1Accent}>débordé.</Text>
+          {' Il '}
+          <Text style={s.s1Underline}>{"n'arrive plus à classer"}</Text>
+          {" les choses entre 'urgent', 'important', 'peut attendre', 'juste une pensée' ou 'émotion du moment'."}
+        </Text>
+        <Text style={s.s1Para}>
+          {"C'est pour ça que tu peux te retrouver à vouloir répondre à tous tes messages, ranger toute ta chambre, refaire ton planning, résoudre ton avenir, envoyer un mail, manger, annuler un truc et ouvrir l'application météo… tout ça dans la même minute."}
+        </Text>
+        <View style={s.s1SubDivider} />
+        <View style={s.s1Box}>
+          <Text style={s.s1BoxText}>{"La bonne question n'est pas :"}</Text>
+          <Text style={s.s1BoxQuote}>{"Qu'est-ce que je dois absolument tout régler ?"}</Text>
+          <Text style={s.s1BoxText}>{'La bonne question devient :'}</Text>
+          <Text style={s.s1BoxQuote}>{"Qu'est-ce qui a une vraie conséquence si je ne le fais pas maintenant ?"}</Text>
+        </View>
+        <Text style={[s.s1Para, { marginTop: 20, marginHorizontal: 24 }]}>
+          {'Souvent, la réponse est beaucoup plus petite que ce que ton cerveau saturé te fait croire.'}
+        </Text>
+        <View style={[s.s1Box, { marginTop: 16 }]}>
+          <Text style={s.s1BoxReteTitle}>À retenir</Text>
+          <Text style={s.s1BoxReteItem}>{"Tout semble prioritaire parce que mon cerveau n'arrive plus à classer. Je commence par choisir ce qui demande vraiment mon attention en premier."}</Text>
+          <Text style={[s.s1BoxReteItem, { marginBottom: 0 }]}>{"Ce n'est pas parce qu'une chose revient dans ma tête qu'elle doit être réglée tout de suite."}</Text>
+        </View>
+      </>
+    );
+
+    return (
+      <View style={{ flex: 1, backgroundColor: S1.bg }}>
+        <View style={[s.s1SubHeaderWrap, { paddingTop: insets.top + 10 }]}>
+          <TouchableOpacity
+            onPress={() => setStep1SubPage(null)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            activeOpacity={0.7}>
+            <Text style={s.s1SubBack}>{'← Retour'}</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 48 }}
+          showsVerticalScrollIndicator={false}
+          onScroll={handleStepNavScroll}
+          scrollEventThrottle={16}>
+          <Text style={s.s1SubTitle}>{title}</Text>
+          <View style={s.s1SubTitleLine} />
+          {key === 'urgent' ? renderUrgent() : (
+            <Text style={[s.s1Para, { paddingHorizontal: 24 }]}>À venir.</Text>
+          )}
+          <TouchableOpacity onPress={() => setStep1SubPage(null)} style={s.s1SubBackBtn} activeOpacity={0.7}>
+            <Text style={s.s1SubBackBtnText}>{'← Retour à Comprendre'}</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderStep1 = () => {
+    if (step1SubPage) return renderStep1Sub(step1SubPage);
+
+    const listOpacity = step1ListAnim;
+    const listTransY = step1ListAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] });
+
+    return (
+      <View style={{ flex: 1, backgroundColor: S1.bg }}>
+        {/* Minimal header */}
+        <View style={[s.s1HeaderWrap, { paddingTop: insets.top + 10 }]}>
+          <TouchableOpacity
+            onPress={() => goTo('hub')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            activeOpacity={0.7}>
+            <Text style={s.s1HeaderBack}>{'< Retour au hub'}</Text>
+          </TouchableOpacity>
+          <Text style={s.s1HeaderStep}>{'Étape 1/5'}</Text>
+        </View>
+
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 48 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          onScroll={e => { handleStep1Scroll(e); handleStepNavScroll(); }}
+          scrollEventThrottle={16}>
+
+          {/* Page title */}
+          <Text style={s.s1MainTitle}>
+            <Text style={{ color: S1.text }}>{'Le trop-plein '}</Text>
+            <Text style={{ color: S1.accent }}>{'expliqué'}</Text>
+          </Text>
+
+          {/* Hero block */}
+          <Text style={s.s1HeroQ}>{'Pourquoi tout devient trop ?'}</Text>
+          <TouchableOpacity
+            onPress={animateArrowThenOpenModal}
+            activeOpacity={0.7}
+            style={s.s1HeroLinkRow}>
+            <Text style={s.s1HeroLinkText}>{'Comprendre '}</Text>
+            <Animated.View style={{ transform: [{ translateX: step1ArrowX }] }}>
+              <Text style={s.s1HeroLinkText}>{'→'}</Text>
+            </Animated.View>
+          </TouchableOpacity>
+
+          {/* Separator + list + continue — only after modal understood */}
+          {hasUnderstoodIntro && <View style={s.s1Sep} />}
+
+          {hasUnderstoodIntro && (
+            <Animated.View style={{ opacity: listOpacity, transform: [{ translateY: listTransY }] }}>
+              {STEP1_SECONDARY.map(q => (
                 <TouchableOpacity
-                  style={[s.s1LikeBtn, liked && s.s1LikeBtnActive]}
-                  onPress={() => setLikedCards(prev =>
-                    prev.includes(card.key) ? prev.filter(k => k !== card.key) : [...prev, card.key],
-                  )}
-                  activeOpacity={0.8}>
-                  <Text style={[s.s1LikeBtnText, liked && s.s1LikeBtnTextActive]}>
-                    {liked ? 'Noté ✓' : 'Ça me parle'}
-                  </Text>
+                  key={q.key}
+                  style={s.s1ListRow}
+                  onPress={() => setStep1SubPage(q.key)}
+                  activeOpacity={0.7}>
+                  <Text style={s.s1ListLabel}>{q.label}</Text>
+                  <Text style={s.s1ListArrow}>{'→'}</Text>
                 </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        );
-      })}
-      {step1Read && (
-        <Text style={s.readBadge}>Section lue ✓</Text>
-      )}
-    </StepShell>
-  );
+              ))}
+            </Animated.View>
+          )}
+
+          {hasUnderstoodIntro && (
+            <TouchableOpacity onPress={() => goTo('step2')} style={s.s1ContinueWrap} activeOpacity={0.6}>
+              <Text style={s.s1ContinueText}>{'Continuer vers Repérer →'}</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      </View>
+    );
+  };
 
   // ── Step 2 — Repérer ──────────────────────────────────────────────────────
 
@@ -1604,7 +1738,7 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
     <>
       <StepShell scrollable={false}>
         <ScrollView
-          style={{ flex: 1 }}
+          style={{ flex: 1, backgroundColor: C.bg }}
           contentContainerStyle={[s.stepScroll, { paddingBottom: insets.bottom + 140 }]}
           showsVerticalScrollIndicator={false}
           onScroll={handleStepNavScroll}
@@ -1816,7 +1950,7 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
     <>
       <StepShell scrollable={false}>
         <ScrollView
-          style={{ flex: 1 }}
+          style={{ flex: 1, backgroundColor: C.bg }}
           contentContainerStyle={[s.stepScroll, { paddingBottom: insets.bottom + 140 }]}
           showsVerticalScrollIndicator={false}
           onScroll={handleStepNavScroll}
@@ -1826,20 +1960,24 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
             Ces réflexes ne sont pas des défauts. Ce sont des tentatives de protection. Certains soulagent sur le moment, mais peuvent aggraver après.
           </Text>
           {REFLEXES.map(reflex => {
-            const recognized = reflexes.includes(reflex.key);
+            const status = reflexes[reflex.key] ?? null;
             return (
               <TouchableOpacity
                 key={reflex.key}
-                style={[s.reflexCard, recognized && s.reflexCardRecognized]}
+                style={[s.reflexCard, status === 'recognized' && s.reflexCardRecognized, status === 'not_me' && s.reflexCardNotMe]}
                 onPress={() => setSelectedReflex(reflex)}
                 activeOpacity={0.75}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.reflexTitle}>{reflex.title}</Text>
                   <Text style={s.reflexMiroir} numberOfLines={2}>{reflex.phraseMiroir}</Text>
                 </View>
-                {recognized ? (
+                {status === 'recognized' ? (
                   <View style={s.reflexBadge}>
                     <Text style={s.reflexBadgeText}>reconnu</Text>
+                  </View>
+                ) : status === 'not_me' ? (
+                  <View style={s.reflexBadgeNotMe}>
+                    <Text style={s.reflexBadgeNotMeText}>pas moi</Text>
                   </View>
                 ) : (
                   <Text style={s.sigChevron}>›</Text>
@@ -1854,9 +1992,9 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
       {selectedReflex && (
         <ReflexModal
           reflex={selectedReflex}
-          recognized={reflexes.includes(selectedReflex.key)}
+          status={reflexes[selectedReflex.key] ?? null}
           onClose={() => setSelectedReflex(null)}
-          onRecognize={recognizeReflex}
+          onToggle={toggleReflex}
         />
       )}
     </>
@@ -1924,7 +2062,7 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
   // ── Main render ───────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['top']}>
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
       {view === 'hub' && renderHub()}
       {view === 'step1' && renderStep1()}
       {view === 'step2' && renderStep2()}
@@ -1932,11 +2070,11 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
       {view === 'step4' && renderStep4()}
       {view === 'step5' && renderStep5()}
 
-      {view !== 'hub' && (
+      {view !== 'hub' && view !== 'step1' && (
         <Animated.View
-          style={[s.floatingStepNav, { opacity: stepNavAnim }]}
-          pointerEvents={showStepNav ? 'auto' : 'none'}>
-          <StepNav current={view} completed={completedSteps} onNavigate={goTo} />
+          style={[s.floatingStepNav, { opacity: stepNavOpacity, backgroundColor: 'transparent' }]}
+          pointerEvents="box-none">
+          <StepNav current={view} onNavigate={goTo} />
         </Animated.View>
       )}
 
@@ -1947,6 +2085,59 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
           onClose={() => setSelectedTrigger(null)}
           onStatus={setTriggerStatus}
         />
+      )}
+
+      {step1Modal && (
+        <TouchableOpacity style={s.s1ModalLayer} activeOpacity={1} onPress={() => closeStep1Modal(false)}>
+          <BlurView intensity={50} tint="light" style={s.s1AbsFill} />
+          <View style={s.s1WarmOverlay} />
+          <TouchableOpacity activeOpacity={1} style={s.s1ModalCardOuter} onPress={() => {}}>
+            <Animated.View style={{
+              flex: 1,
+              borderRadius: 30,
+              overflow: 'hidden',
+              opacity: step1ModalAnim,
+              transform: [
+                { scale: step1ModalAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+                { translateY: step1ModalAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) },
+              ],
+            }}>
+              <LinearGradient
+                colors={['#F4B38C', '#F6C8AD', '#FDEADF']}
+                start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
+                style={s.s1ModalCard}>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.s1ModalScroll} style={{ flexShrink: 1 }}>
+                  <TouchableOpacity
+                    onPress={() => closeStep1Modal(false)}
+                    style={s.s1ModalClose}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    activeOpacity={0.7}>
+                    <Text style={s.s1ModalCloseText}>{'✕'}</Text>
+                  </TouchableOpacity>
+                  <Text style={s.s1ModalTitle}>{'Pourquoi tout devient trop ?'}</Text>
+                  <View style={s.s1ModalTitleLine} />
+                  <Text style={s.s1ModalPara}>
+                    {"Quand tu satures, ce n'est pas simplement parce que tu es stressé, désorganisé ou 'pas assez motivé'."}
+                  </Text>
+                  <Text style={s.s1ModalPara}>
+                    {'Chez une personne '}
+                    <Text style={s.s1ModalAccent}>{'TDAH'}</Text>
+                    {", le cerveau peut recevoir trop de signaux en même temps : une tâche à faire, une notification, un bruit, une lumière, une pensée anxieuse, un message non répondu, un objet qui traîne, une décision à prendre. Séparément, chacun de ces éléments peut sembler petit. Mais ensemble, ils peuvent prendre "}
+                    <Text style={s.s1ModalItalicBold}>{'toute la place.'}</Text>
+                  </Text>
+                  <Text style={s.s1ModalPara}>
+                    {'Dans ces moments-là, ton système de tri est '}
+                    <Text style={s.s1ModalAccent}>{'débordé.'}</Text>
+                    {" Ton cerveau a plus de mal à distinguer ce qui est vraiment urgent, ce qui peut attendre, ce qui est juste une pensée, et ce qui est une émotion. Tout se mélange. Tout devient bruyant. Tout paraît important."}
+                  </Text>
+                </ScrollView>
+                <TouchableOpacity onPress={() => closeStep1Modal(true)} style={s.s1ModalSeeBtn} activeOpacity={0.7}>
+                  <Text style={s.s1ModalSeeBtnText}>{"J'ai compris →"}</Text>
+                </TouchableOpacity>
+              </LinearGradient>
+            </Animated.View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       )}
 
       {showProtection && (
@@ -1969,7 +2160,7 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
           </Animated.View>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -2004,7 +2195,7 @@ function StepFooter({
 
 const s = StyleSheet.create({
   // Hub
-  hubScroll: { paddingHorizontal: 16, paddingTop: 8 },
+  hubScroll: { paddingHorizontal: 16 },
   hubHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   hubTitle: { fontSize: 17, fontWeight: '700', color: C.text, textAlign: 'center', flex: 1 },
   hubSubtitle: { fontSize: 14, color: C.textSub, textAlign: 'center', lineHeight: 20, marginBottom: 20, paddingHorizontal: 8 },
@@ -2053,7 +2244,6 @@ const s = StyleSheet.create({
   stickyHeader: {
     backgroundColor: 'rgba(237,233,254,0.82)',
     paddingHorizontal: 20,
-    paddingTop: 8,
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: C.border,
@@ -2077,33 +2267,70 @@ const s = StyleSheet.create({
   },
 
   // Step nav — floating pill
-  floatingStepNav: { position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center', zIndex: 90 },
+  floatingStepNav: { position: 'absolute', bottom: 36, left: 0, right: 0, alignItems: 'center', zIndex: 90, backgroundColor: 'transparent' },
   stepNavWrap: {
-    backgroundColor: 'rgba(255,255,255,0.88)',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: 'transparent',
   },
-  stepCirclesRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  stepLine: { width: 28, height: 1.5, backgroundColor: C.border },
-  stepLineDone: { backgroundColor: C.primaryMuted },
-  stepCircle: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
-  stepCircleActive: { backgroundColor: C.primary },
-  stepCircleDone: { backgroundColor: C.primaryLight },
-  stepCircleNum: { fontSize: 12, fontWeight: '700', color: C.textSub },
-  stepCircleNumActive: { color: C.surface },
+  stepCirclesRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'transparent' },
+  stepLine: { width: 28, height: 1.5, backgroundColor: 'rgba(255,255,255,0.35)' },
+  stepLineDone: { backgroundColor: 'rgba(255,255,255,0.7)' },
+  stepCircle: { width: 30, height: 30, borderRadius: 15, backgroundColor: 'transparent', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' },
+  stepCircleActive: { backgroundColor: C.primary, borderWidth: 2, borderColor: 'white' },
+  stepCircleNum: { fontSize: 12, fontWeight: '700', color: 'white' },
+  stepCircleNumActive: { color: 'white' },
 
   // Step shared
   stepScroll: { paddingHorizontal: 16, paddingTop: 20 },
   stepTitle: { fontSize: 22, fontWeight: '800', color: C.text, marginBottom: 10, letterSpacing: -0.3, lineHeight: 28 },
   stepSubtitle: { fontSize: 14, color: C.textSub, lineHeight: 22, marginBottom: 24 },
-  readBadge: { fontSize: 13, color: C.green, fontWeight: '600', textAlign: 'center', marginTop: 16 },
+  // ── Step 1 — main page ──────────────────────────────────────────────────────
+  s1HeaderWrap: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 12 },
+  s1HeaderBack: { fontSize: 13, color: S1.muted },
+  s1HeaderStep: { fontSize: 13, color: S1.muted },
+  s1MainTitle: { fontSize: 26, fontWeight: '700', paddingHorizontal: 24, marginTop: 20, marginBottom: 0, lineHeight: 34 },
+  s1HeroQ: { fontFamily: 'Georgia', fontSize: 27, fontWeight: '400', letterSpacing: 0.2, color: S1.text, textAlign: 'center', marginTop: 32, paddingHorizontal: 28, lineHeight: 36 },
+  s1HeroLinkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 16 },
+  s1HeroLinkText: { fontSize: 14, color: S1.accent, textDecorationLine: 'underline' },
+  s1Sep: { height: 0.5, backgroundColor: S1.line, marginVertical: 32, marginHorizontal: 24 },
+  s1ListRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 20, paddingHorizontal: 24, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(224, 221, 213, 0.7)' },
+  s1ListLabel: { fontFamily: 'Georgia', fontSize: 20, lineHeight: 28, fontWeight: '400', color: S1.text, flex: 1 },
+  s1ListArrow: { fontSize: 16, color: '#CCCCCC', marginLeft: 12 },
+  s1ContinueWrap: { alignItems: 'center', paddingBottom: 32, paddingTop: 24 },
+  s1ContinueText: { fontSize: 13, color: '#BBBBBB' },
+  // ── Step 1 — sub-pages ──────────────────────────────────────────────────────
+  s1SubHeaderWrap: { paddingHorizontal: 20, paddingBottom: 12 },
+  s1SubBack: { fontSize: 13, color: S1.muted },
+  s1SubTitle: { fontFamily: 'Georgia', fontSize: 22, color: S1.text, textAlign: 'center', paddingHorizontal: 24, marginTop: 20, lineHeight: 30 },
+  s1SubTitleLine: { width: 80, height: 1, backgroundColor: S1.line, alignSelf: 'center', marginTop: 10, marginBottom: 28 },
+  s1Para: { fontSize: 15, color: S1.text, lineHeight: 25, marginBottom: 18, paddingHorizontal: 24 },
+  s1Accent: { fontWeight: '600', color: S1.accent },
+  s1Italic: { fontStyle: 'italic' },
+  s1Underline: { textDecorationLine: 'underline' },
+  s1SubDivider: { height: 0.5, backgroundColor: S1.line, marginVertical: 24, marginHorizontal: 24 },
+  s1Box: { backgroundColor: '#F5F0E8', borderRadius: 14, borderLeftWidth: 2, borderLeftColor: S1.accent, padding: 18, marginHorizontal: 24 },
+  s1BoxText: { fontSize: 15, color: S1.text, lineHeight: 24, marginBottom: 6 },
+  s1BoxQuote: { fontSize: 15, color: S1.text, fontStyle: 'italic', textAlign: 'center', lineHeight: 24, marginBottom: 12 },
+  s1BoxReteTitle: { fontSize: 12, fontWeight: '700', color: S1.accent, marginBottom: 10, letterSpacing: 0.6, textTransform: 'uppercase' },
+  s1BoxReteItem: { fontSize: 14, color: S1.text, lineHeight: 22, marginBottom: 10 },
+  s1SubBackBtn: { alignItems: 'center', paddingVertical: 24 },
+  s1SubBackBtnText: { fontSize: 13, color: S1.muted },
+  // ── Step 1 — modal overlay ───────────────────────────────────────────────────
+  s1ModalLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, justifyContent: 'center', alignItems: 'center' },
+  s1AbsFill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  s1WarmOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(20, 10, 5, 0.45)' },
+  s1ModalCardOuter: { width: '88%', height: '72%', borderRadius: 30, shadowColor: '#8B4A2A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 12 },
+  s1ModalCard: { flex: 1 },
+  s1ModalScroll: { padding: 24, paddingTop: 16 },
+  s1ModalClose: { alignSelf: 'flex-end', backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 20, padding: 7, marginBottom: 12 },
+  s1ModalCloseText: { fontSize: 13, color: S1.brown },
+  s1ModalTitle: { fontFamily: 'Georgia', fontSize: 18, color: S1.text, textAlign: 'center', lineHeight: 26 },
+  s1ModalTitleLine: { width: 60, height: 1, backgroundColor: '#C4845A', alignSelf: 'center', marginTop: 8, marginBottom: 20 },
+  s1ModalPara: { fontSize: 15, lineHeight: 24, color: S1.brown, marginBottom: 14 },
+  s1ModalAccent: { color: S1.accent, fontWeight: '600' },
+  s1ModalItalicBold: { fontStyle: 'italic', fontWeight: '600' },
+  s1ModalSeeBtn: { paddingTop: 20, paddingBottom: 8, alignItems: 'center' },
+  s1ModalSeeBtnText: { fontSize: 14, color: '#5A3A2A' },
   stepFooter: { paddingHorizontal: 16, paddingTop: 8, gap: 10 },
   continueBtn: { backgroundColor: C.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 5 },
   continueBtnText: { color: C.surface, fontSize: 16, fontWeight: '700' },
@@ -2111,19 +2338,6 @@ const s = StyleSheet.create({
   hubBtnText: { color: C.primary, fontSize: 15, fontWeight: '600' },
   expressBtn: { backgroundColor: C.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginBottom: 10, shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 5 },
   expressBtnText: { color: C.surface, fontSize: 16, fontWeight: '700' },
-
-  // Step 1
-  s1Card: { backgroundColor: C.surface, borderRadius: 16, borderWidth: 1, borderColor: C.border, marginBottom: 10, overflow: 'hidden' },
-  s1Header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
-  s1Title: { fontSize: 15, fontWeight: '700', color: C.text, flex: 1, lineHeight: 22 },
-  s1Body: { backgroundColor: C.expandBg, padding: 16, borderTopWidth: 1, borderTopColor: C.border },
-  s1BodyText: { fontSize: 14, color: C.textSub, lineHeight: 22, marginBottom: 14 },
-  s1PhraseBlock: { backgroundColor: C.primaryLight, borderRadius: 10, padding: 12, marginBottom: 14 },
-  s1Phrase: { fontSize: 13, color: C.primary, fontStyle: 'italic', lineHeight: 20, textAlign: 'center' },
-  s1LikeBtn: { backgroundColor: C.surface, borderRadius: 10, borderWidth: 1.5, borderColor: C.border, paddingVertical: 10, alignItems: 'center' },
-  s1LikeBtnActive: { backgroundColor: C.primaryLight, borderColor: C.primaryMuted },
-  s1LikeBtnText: { fontSize: 14, color: C.textSub, fontWeight: '600' },
-  s1LikeBtnTextActive: { color: C.primary },
 
   // Step 2 — accordion
   accordion: { backgroundColor: C.surface, borderRadius: 16, borderWidth: 1, borderColor: C.border, marginBottom: 10, overflow: 'hidden' },
@@ -2224,10 +2438,13 @@ const s = StyleSheet.create({
   // Step 4 — reflexes
   reflexCard: { backgroundColor: C.surface, borderRadius: 14, borderWidth: 1, borderColor: C.border, flexDirection: 'row', alignItems: 'center', padding: 14, marginBottom: 10, gap: 10 },
   reflexCardRecognized: { backgroundColor: C.primaryLight, borderColor: C.primaryMuted },
+  reflexCardNotMe: { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB' },
   reflexTitle: { fontSize: 15, fontWeight: '700', color: C.text, marginBottom: 4 },
   reflexMiroir: { fontSize: 12, color: C.textSub, lineHeight: 18 },
   reflexBadge: { backgroundColor: C.primary, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   reflexBadgeText: { fontSize: 11, color: C.surface, fontWeight: '600' },
+  reflexBadgeNotMe: { backgroundColor: '#E5E7EB', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  reflexBadgeNotMeText: { fontSize: 11, color: '#6B7280', fontWeight: '600' },
 
   // Step 5 — plan
   planBlock: { backgroundColor: C.surface, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 16, marginBottom: 16 },

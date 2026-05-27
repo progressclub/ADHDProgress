@@ -1918,9 +1918,6 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
       <TouchableOpacity style={s.expressBtn} onPress={onExpressFlow} activeOpacity={0.82}>
         <Text style={s.expressBtnText}>Lancer mon mode express</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={s.hubBtn} onPress={() => goTo('hub')} activeOpacity={0.75}>
-        <Text style={s.hubBtnText}>Retour au hub</Text>
-      </TouchableOpacity>
     </StepShell>
   );
 
@@ -1999,9 +1996,6 @@ function StepFooter({
           <Text style={s.continueBtnText}>Continuer vers {nextLabel}</Text>
         </TouchableOpacity>
       )}
-      <TouchableOpacity style={s.hubBtn} onPress={() => onGoTo('hub')} activeOpacity={0.75}>
-        <Text style={s.hubBtnText}>Retour au hub</Text>
-      </TouchableOpacity>
     </View>
   );
 }

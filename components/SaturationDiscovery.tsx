@@ -10,7 +10,6 @@ import {
   NativeSyntheticEvent,
   Animated,
   Modal,
-  Easing,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -1223,10 +1222,9 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
   const [step1Read, setStep1Read] = useState(false);
   const [step1Modal, setStep1Modal] = useState(false);
   const [step1SubPage, setStep1SubPage] = useState<string | null>(null);
-  const [hasUnderstoodIntro, setHasUnderstoodIntro] = useState(false);
+  const [hasOpenedModal, setHasOpenedModal] = useState(false);
   const step1ArrowX = useRef(new Animated.Value(0)).current;
   const step1ModalAnim = useRef(new Animated.Value(0)).current;
-  const step1ListAnim = useRef(new Animated.Value(0)).current;
 
   // Step 2
   const [signals, setSignals] = useState<SignalsMap>({});
@@ -1403,15 +1401,10 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
     }
   }, [step1Modal]);
 
-  const closeStep1Modal = (understood = false) => {
+  const closeStep1Modal = () => {
     Animated.timing(step1ModalAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
       setStep1Modal(false);
-      if (understood && !hasUnderstoodIntro) {
-        setHasUnderstoodIntro(true);
-        Animated.timing(step1ListAnim, {
-          toValue: 1, duration: 400, easing: Easing.out(Easing.ease), useNativeDriver: true,
-        }).start();
-      }
+      setHasOpenedModal(true);
     });
   };
 
@@ -1662,12 +1655,9 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
   const renderStep1 = () => {
     if (step1SubPage) return renderStep1Sub(step1SubPage);
 
-    const listOpacity = step1ListAnim;
-    const listTransY = step1ListAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] });
-
     return (
       <View style={{ flex: 1, backgroundColor: S1.bg }}>
-        {/* Minimal header */}
+        {/* Header */}
         <View style={[s.s1HeaderWrap, { paddingTop: insets.top + 10 }]}>
           <TouchableOpacity
             onPress={() => goTo('hub')}
@@ -1692,46 +1682,53 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
             <Text style={{ color: S1.accent }}>{'expliqué'}</Text>
           </Text>
 
-          {/* Hero block */}
-          <Text style={s.s1HeroQ}>{'Pourquoi tout devient trop ?'}</Text>
-          <TouchableOpacity
-            onPress={animateArrowThenOpenModal}
-            activeOpacity={0.7}
-            style={s.s1HeroLinkRow}>
-            <Text style={s.s1HeroLinkText}>{'Comprendre '}</Text>
-            <Animated.View style={{ transform: [{ translateX: step1ArrowX }] }}>
-              <Text style={s.s1HeroLinkText}>{'→'}</Text>
-            </Animated.View>
-          </TouchableOpacity>
-
-          {/* Separator + list + continue — only after modal understood */}
-          {hasUnderstoodIntro && <View style={s.s1Sep} />}
-
-          {hasUnderstoodIntro && (
-            <Animated.View style={{ opacity: listOpacity, transform: [{ translateY: listTransY }] }}>
-              {STEP1_SECONDARY.map(q => (
-                <TouchableOpacity
-                  key={q.key}
-                  style={s.s1ListRow}
-                  onPress={() => setStep1SubPage(q.key)}
-                  activeOpacity={0.7}>
-                  <Text
-                    style={s.s1ListLabel}
-                    numberOfLines={1}
-                    ellipsizeMode="tail">
-                    {q.label}
-                  </Text>
-                  <Text style={s.s1ListArrow}>{'→'}</Text>
-                </TouchableOpacity>
-              ))}
-            </Animated.View>
+          {/* État initial : hero centré + séparateur */}
+          {!hasOpenedModal && (
+            <>
+              <Text style={s.s1HeroQ}>{'Pourquoi tout devient trop ?'}</Text>
+              <TouchableOpacity
+                onPress={animateArrowThenOpenModal}
+                activeOpacity={0.7}
+                style={s.s1HeroLinkRow}>
+                <Text style={s.s1HeroLinkText}>{'Comprendre '}</Text>
+                <Animated.View style={{ transform: [{ translateX: step1ArrowX }] }}>
+                  <Text style={s.s1HeroLinkText}>{'→'}</Text>
+                </Animated.View>
+              </TouchableOpacity>
+              <View style={s.s1Sep} />
+            </>
           )}
 
-          {hasUnderstoodIntro && (
-            <TouchableOpacity onPress={() => goTo('step2')} style={s.s1ContinueWrap} activeOpacity={0.6}>
-              <Text style={s.s1ContinueText}>{'Continuer vers Repérer →'}</Text>
+          {/* État post-modale : "Pourquoi tout devient trop ?" en tête de liste */}
+          {hasOpenedModal && (
+            <TouchableOpacity
+              style={s.s1ListRow}
+              onPress={animateArrowThenOpenModal}
+              activeOpacity={0.7}>
+              <Text style={s.s1ListLabel} numberOfLines={1} ellipsizeMode="tail">
+                {'Pourquoi tout devient trop ?'}
+              </Text>
+              <Text style={s.s1ListArrow}>{'→'}</Text>
             </TouchableOpacity>
           )}
+
+          {/* Liste toujours visible */}
+          {STEP1_SECONDARY.map(q => (
+            <TouchableOpacity
+              key={q.key}
+              style={s.s1ListRow}
+              onPress={() => setStep1SubPage(q.key)}
+              activeOpacity={0.7}>
+              <Text style={s.s1ListLabel} numberOfLines={1} ellipsizeMode="tail">
+                {q.label}
+              </Text>
+              <Text style={s.s1ListArrow}>{'→'}</Text>
+            </TouchableOpacity>
+          ))}
+
+          <TouchableOpacity onPress={() => goTo('step2')} style={s.s1ContinueWrap} activeOpacity={0.6}>
+            <Text style={s.s1ContinueText}>{'Continuer vers Repérer →'}</Text>
+          </TouchableOpacity>
         </ScrollView>
       </View>
     );
@@ -2093,7 +2090,7 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
       )}
 
       {step1Modal && (
-        <TouchableOpacity style={s.s1ModalLayer} activeOpacity={1} onPress={() => closeStep1Modal(false)}>
+        <TouchableOpacity style={s.s1ModalLayer} activeOpacity={1} onPress={() => closeStep1Modal()}>
           <BlurView intensity={50} tint="light" style={s.s1AbsFill} />
           <View style={s.s1WarmOverlay} />
           <TouchableOpacity activeOpacity={1} style={s.s1ModalCardOuter} onPress={() => {}}>
@@ -2112,7 +2109,7 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
                 style={s.s1ModalCard}>
                 {/* X fixe hors du scroll */}
                 <TouchableOpacity
-                  onPress={() => closeStep1Modal(false)}
+                  onPress={() => closeStep1Modal()}
                   style={s.s1ModalClose}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   activeOpacity={0.7}>
@@ -2136,7 +2133,7 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
                     {" Ton cerveau a plus de mal à distinguer ce qui est vraiment urgent, ce qui peut attendre, ce qui est juste une pensée, et ce qui est une émotion. Tout se mélange. Tout devient bruyant. Tout paraît important."}
                   </Text>
                   {/* Bouton en fin de contenu scrollable */}
-                  <TouchableOpacity onPress={() => closeStep1Modal(true)} style={s.s1ModalSeeBtn} activeOpacity={0.7}>
+                  <TouchableOpacity onPress={() => closeStep1Modal()} style={s.s1ModalSeeBtn} activeOpacity={0.7}>
                     <Text style={s.s1ModalSeeBtnText}>{"J'ai compris →"}</Text>
                   </TouchableOpacity>
                 </ScrollView>

@@ -1682,7 +1682,7 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
             <Text style={{ color: S1.accent }}>{'expliqué'}</Text>
           </Text>
 
-          {/* État initial : hero centré + séparateur */}
+          {/* État initial : hero centré uniquement */}
           {!hasOpenedModal && (
             <>
               <Text style={s.s1HeroQ}>{'Pourquoi tout devient trop ?'}</Text>
@@ -1695,40 +1695,38 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
                   <Text style={s.s1HeroLinkText}>{'→'}</Text>
                 </Animated.View>
               </TouchableOpacity>
-              <View style={s.s1Sep} />
             </>
           )}
 
-          {/* État post-modale : "Pourquoi tout devient trop ?" en tête de liste */}
+          {/* État post-modale : liste complète avec "Pourquoi tout devient trop ?" en tête */}
           {hasOpenedModal && (
-            <TouchableOpacity
-              style={s.s1ListRow}
-              onPress={animateArrowThenOpenModal}
-              activeOpacity={0.7}>
-              <Text style={s.s1ListLabel} numberOfLines={1} ellipsizeMode="tail">
-                {'Pourquoi tout devient trop ?'}
-              </Text>
-              <Text style={s.s1ListArrow}>{'→'}</Text>
-            </TouchableOpacity>
+            <View style={{ marginTop: 12 }}>
+              <TouchableOpacity
+                style={s.s1ListRow}
+                onPress={animateArrowThenOpenModal}
+                activeOpacity={0.7}>
+                <Text style={s.s1ListLabel} numberOfLines={1} ellipsizeMode="tail">
+                  {'Pourquoi tout devient trop ?'}
+                </Text>
+                <Text style={s.s1ListArrow}>{'→'}</Text>
+              </TouchableOpacity>
+              {STEP1_SECONDARY.map(q => (
+                <TouchableOpacity
+                  key={q.key}
+                  style={s.s1ListRow}
+                  onPress={() => setStep1SubPage(q.key)}
+                  activeOpacity={0.7}>
+                  <Text style={s.s1ListLabel} numberOfLines={1} ellipsizeMode="tail">
+                    {q.label}
+                  </Text>
+                  <Text style={s.s1ListArrow}>{'→'}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity onPress={() => goTo('step2')} style={s.s1ContinueWrap} activeOpacity={0.6}>
+                <Text style={s.s1ContinueText}>{'Continuer vers Repérer →'}</Text>
+              </TouchableOpacity>
+            </View>
           )}
-
-          {/* Liste toujours visible */}
-          {STEP1_SECONDARY.map(q => (
-            <TouchableOpacity
-              key={q.key}
-              style={s.s1ListRow}
-              onPress={() => setStep1SubPage(q.key)}
-              activeOpacity={0.7}>
-              <Text style={s.s1ListLabel} numberOfLines={1} ellipsizeMode="tail">
-                {q.label}
-              </Text>
-              <Text style={s.s1ListArrow}>{'→'}</Text>
-            </TouchableOpacity>
-          ))}
-
-          <TouchableOpacity onPress={() => goTo('step2')} style={s.s1ContinueWrap} activeOpacity={0.6}>
-            <Text style={s.s1ContinueText}>{'Continuer vers Repérer →'}</Text>
-          </TouchableOpacity>
         </ScrollView>
       </View>
     );
@@ -2291,12 +2289,12 @@ const s = StyleSheet.create({
   s1HeaderWrap: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 12 },
   s1HeaderBack: { fontSize: 13, color: S1.muted },
   s1HeaderStep: { fontSize: 13, color: S1.muted },
-  s1MainTitle: { fontSize: 26, fontWeight: '700', paddingHorizontal: 24, marginTop: 20, marginBottom: 0, lineHeight: 34 },
+  s1MainTitle: { fontSize: 26, fontWeight: '700', paddingHorizontal: 24, marginTop: 20, marginBottom: 8, lineHeight: 34 },
   s1HeroQ: { fontFamily: 'Georgia', fontSize: 27, fontWeight: '400', letterSpacing: 0.2, color: S1.text, textAlign: 'center', marginTop: 32, paddingHorizontal: 28, lineHeight: 36 },
   s1HeroLinkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 16 },
   s1HeroLinkText: { fontSize: 14, color: S1.accent, textDecorationLine: 'underline' },
   s1Sep: { height: 0.5, backgroundColor: S1.line, marginVertical: 32, marginHorizontal: 24 },
-  s1ListRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 11, paddingHorizontal: 24, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.13)' },
+  s1ListRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 16, paddingHorizontal: 24, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.13)' },
   s1ListLabel: { fontFamily: 'Georgia', fontSize: 15, fontWeight: '400', lineHeight: 20, flexShrink: 1, flexWrap: 'nowrap' },
   s1ListArrow: { fontSize: 16, color: '#CCCCCC', marginLeft: 12 },
   s1ContinueWrap: { alignItems: 'center', paddingBottom: 32, paddingTop: 24 },

@@ -2093,7 +2093,6 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
           <View style={s.s1WarmOverlay} />
           <TouchableOpacity activeOpacity={1} style={s.s1ModalCardOuter} onPress={() => {}}>
             <Animated.View style={{
-              flex: 1,
               borderRadius: 30,
               overflow: 'hidden',
               opacity: step1ModalAnim,
@@ -2106,14 +2105,15 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
                 colors={['#F4B38C', '#F6C8AD', '#FDEADF']}
                 start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
                 style={s.s1ModalCard}>
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.s1ModalScroll} style={{ flexShrink: 1 }}>
-                  <TouchableOpacity
-                    onPress={() => closeStep1Modal(false)}
-                    style={s.s1ModalClose}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    activeOpacity={0.7}>
-                    <Text style={s.s1ModalCloseText}>{'✕'}</Text>
-                  </TouchableOpacity>
+                {/* X fixe hors du scroll */}
+                <TouchableOpacity
+                  onPress={() => closeStep1Modal(false)}
+                  style={s.s1ModalClose}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  activeOpacity={0.7}>
+                  <Text style={s.s1ModalCloseText}>{'✕'}</Text>
+                </TouchableOpacity>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.s1ModalScroll}>
                   <Text style={s.s1ModalTitle}>{'Pourquoi tout devient trop ?'}</Text>
                   <View style={s.s1ModalTitleLine} />
                   <Text style={s.s1ModalPara}>
@@ -2125,15 +2125,16 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
                     {", le cerveau peut recevoir trop de signaux en même temps : une tâche à faire, une notification, un bruit, une lumière, une pensée anxieuse, un message non répondu, un objet qui traîne, une décision à prendre. Séparément, chacun de ces éléments peut sembler petit. Mais ensemble, ils peuvent prendre "}
                     <Text style={s.s1ModalItalicBold}>{'toute la place.'}</Text>
                   </Text>
-                  <Text style={s.s1ModalPara}>
+                  <Text style={[s.s1ModalPara, { marginBottom: 0 }]}>
                     {'Dans ces moments-là, ton système de tri est '}
                     <Text style={s.s1ModalAccent}>{'débordé.'}</Text>
                     {" Ton cerveau a plus de mal à distinguer ce qui est vraiment urgent, ce qui peut attendre, ce qui est juste une pensée, et ce qui est une émotion. Tout se mélange. Tout devient bruyant. Tout paraît important."}
                   </Text>
+                  {/* Bouton en fin de contenu scrollable */}
+                  <TouchableOpacity onPress={() => closeStep1Modal(true)} style={s.s1ModalSeeBtn} activeOpacity={0.7}>
+                    <Text style={s.s1ModalSeeBtnText}>{"J'ai compris →"}</Text>
+                  </TouchableOpacity>
                 </ScrollView>
-                <TouchableOpacity onPress={() => closeStep1Modal(true)} style={s.s1ModalSeeBtn} activeOpacity={0.7}>
-                  <Text style={s.s1ModalSeeBtnText}>{"J'ai compris →"}</Text>
-                </TouchableOpacity>
               </LinearGradient>
             </Animated.View>
           </TouchableOpacity>
@@ -2319,17 +2320,17 @@ const s = StyleSheet.create({
   s1ModalLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, justifyContent: 'center', alignItems: 'center' },
   s1AbsFill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   s1WarmOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(20, 10, 5, 0.45)' },
-  s1ModalCardOuter: { width: '88%', height: '72%', borderRadius: 30, shadowColor: '#8B4A2A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 12 },
-  s1ModalCard: { flex: 1 },
-  s1ModalScroll: { padding: 24, paddingTop: 16 },
-  s1ModalClose: { alignSelf: 'flex-end', backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 20, padding: 7, marginBottom: 12 },
+  s1ModalCardOuter: { width: '88%', maxHeight: '78%', borderRadius: 30, shadowColor: '#8B4A2A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 12 },
+  s1ModalCard: {},
+  s1ModalScroll: { paddingHorizontal: 24, paddingBottom: 8 },
+  s1ModalClose: { alignSelf: 'flex-end', backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 20, padding: 7, margin: 14, marginBottom: 0 },
   s1ModalCloseText: { fontSize: 13, color: S1.brown },
   s1ModalTitle: { fontFamily: 'Georgia', fontSize: 18, color: S1.text, textAlign: 'center', lineHeight: 26 },
   s1ModalTitleLine: { width: 60, height: 1, backgroundColor: '#C4845A', alignSelf: 'center', marginTop: 8, marginBottom: 20 },
   s1ModalPara: { fontSize: 15, lineHeight: 24, color: S1.brown, marginBottom: 14 },
   s1ModalAccent: { color: S1.accent, fontWeight: '600' },
   s1ModalItalicBold: { fontStyle: 'italic', fontWeight: '600' },
-  s1ModalSeeBtn: { paddingTop: 20, paddingBottom: 8, alignItems: 'center' },
+  s1ModalSeeBtn: { marginTop: 24, marginBottom: 16, alignItems: 'center' },
   s1ModalSeeBtnText: { fontSize: 14, color: '#5A3A2A' },
   stepFooter: { paddingHorizontal: 16, paddingTop: 8, gap: 10 },
   continueBtn: { backgroundColor: C.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 5 },

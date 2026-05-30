@@ -74,7 +74,7 @@ const S1 = {
 const STEP1_SECONDARY = [
   { key: 'urgent',    label: 'Pourquoi tout semble urgent ?' },
   { key: 'choisir',  label: "Pourquoi tu n'arrives plus à choisir ?" },
-  { key: 'todo',     label: 'Pourquoi une to-do list peut empirer' },
+  { key: 'todo',     label: 'Pourquoi une to-do list empire les choses' },
   { key: 'irritable',label: 'Pourquoi tu deviens irritable' },
   { key: 'telephone',label: 'Pourquoi tu cherches ton téléphone' },
   { key: 'annuler',  label: 'Pourquoi tu veux tout annuler' },
@@ -1715,7 +1715,12 @@ export default function SaturationDiscovery({ onBack, onExpressFlow }: Props) {
                   style={s.s1ListRow}
                   onPress={() => setStep1SubPage(q.key)}
                   activeOpacity={0.7}>
-                  <Text style={s.s1ListLabel}>{q.label}</Text>
+                  <Text
+                    style={s.s1ListLabel}
+                    numberOfLines={1}
+                    ellipsizeMode="tail">
+                    {q.label}
+                  </Text>
                   <Text style={s.s1ListArrow}>{'→'}</Text>
                 </TouchableOpacity>
               ))}
@@ -2294,8 +2299,8 @@ const s = StyleSheet.create({
   s1HeroLinkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 16 },
   s1HeroLinkText: { fontSize: 14, color: S1.accent, textDecorationLine: 'underline' },
   s1Sep: { height: 0.5, backgroundColor: S1.line, marginVertical: 32, marginHorizontal: 24 },
-  s1ListRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 20, paddingHorizontal: 24, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(224, 221, 213, 0.7)' },
-  s1ListLabel: { fontFamily: 'Georgia', fontSize: 20, lineHeight: 28, fontWeight: '400', color: S1.text, flex: 1 },
+  s1ListRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 11, paddingHorizontal: 24, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.13)' },
+  s1ListLabel: { fontSize: 15, fontWeight: '400', lineHeight: 20, flexShrink: 1, flexWrap: 'nowrap' },
   s1ListArrow: { fontSize: 16, color: '#CCCCCC', marginLeft: 12 },
   s1ContinueWrap: { alignItems: 'center', paddingBottom: 32, paddingTop: 24 },
   s1ContinueText: { fontSize: 13, color: '#BBBBBB' },

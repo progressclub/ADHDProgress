@@ -2300,7 +2300,7 @@ const s = StyleSheet.create({
   s1HeroLinkText: { fontSize: 14, color: S1.accent, textDecorationLine: 'underline' },
   s1Sep: { height: 0.5, backgroundColor: S1.line, marginVertical: 32, marginHorizontal: 24 },
   s1ListRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 11, paddingHorizontal: 24, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.13)' },
-  s1ListLabel: { fontSize: 15, fontWeight: '400', lineHeight: 20, flexShrink: 1, flexWrap: 'nowrap' },
+  s1ListLabel: { fontFamily: 'Georgia', fontSize: 15, fontWeight: '400', lineHeight: 20, flexShrink: 1, flexWrap: 'nowrap' },
   s1ListArrow: { fontSize: 16, color: '#CCCCCC', marginLeft: 12 },
   s1ContinueWrap: { alignItems: 'center', paddingBottom: 32, paddingTop: 24 },
   s1ContinueText: { fontSize: 13, color: '#BBBBBB' },

@@ -146,23 +146,26 @@ const EMOTIONS: EmotionData[] = [
   },
 ];
 
-// ─── Carousel data ────────────────────────────────────────────────────────────
+// ─── Carousel dimensions ──────────────────────────────────────────────────────
 
-const { width: SW } = Dimensions.get('window');
-const PEEK = 18;
+const { width: SW, height: SH } = Dimensions.get('window');
+const PEEK = 22;
 const CARD_W = SW - 2 * PEEK;
+const CARD_H = Math.max(380, Math.min(Math.round(SH * 0.64), 550));
 
-type CarouselMeta = { mainWord: string; gradient: [string, string] };
+// ─── Carousel metadata ────────────────────────────────────────────────────────
+
+type CarouselMeta = { mainWord: string; gradient: string[] };
 type CarouselItem = EmotionData & CarouselMeta;
 
 const CAROUSEL_META: Record<string, CarouselMeta> = {
-  saturation:      { mainWord: 'saturé·e',       gradient: ['#F2D4C2', '#E8C4A8'] },
-  paralysie:       { mainWord: 'paralysé·e',      gradient: ['#C8D8E8', '#B8C8DC'] },
-  anxieux:         { mainWord: 'anxieux·se',      gradient: ['#D4C8E0', '#C4B8D4'] },
-  hyperfocus:      { mainWord: 'en hyperfocus',   gradient: ['#C8DDD0', '#B8CEC0'] },
-  hyperstimulation:{ mainWord: 'hyperstimulé·e', gradient: ['#E8D8B8', '#DCC8A4'] },
-  tempete:         { mainWord: 'en tempête',      gradient: ['#E0C8C8', '#D4B8B8'] },
-  alignement:      { mainWord: 'aligné·e',        gradient: ['#D0DCC8', '#C0CEB8'] },
+  saturation:      { mainWord: 'saturé·e',       gradient: ['#FDE8D2', '#F5CFA8', '#EBB884'] },
+  paralysie:       { mainWord: 'paralysé·e',      gradient: ['#D8E9F5', '#BECFE8', '#A8BDD8'] },
+  anxieux:         { mainWord: 'anxieux·se',      gradient: ['#EDE0F5', '#DDD0EE', '#CCC0E4'] },
+  hyperfocus:      { mainWord: 'en hyperfocus',   gradient: ['#CBE8D8', '#B5D8C8', '#9EC8B4'] },
+  hyperstimulation:{ mainWord: 'hyperstimulé·e', gradient: ['#FEF0C2', '#FBE0A0', '#F5CC7A'] },
+  tempete:         { mainWord: 'en tempête',      gradient: ['#F5D4D4', '#EAC0C0', '#DEACAC'] },
+  alignement:      { mainWord: 'aligné·e',        gradient: ['#DCE9D4', '#C8D8C0', '#B4C9AB'] },
 };
 
 const CAROUSEL_ORDER = [
@@ -175,6 +178,14 @@ const CAROUSEL_CARDS: CarouselItem[] = CAROUSEL_ORDER.map(key => ({
   ...CAROUSEL_META[key],
 }));
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function mainWordFontSize(word: string): number {
+  if (word.length <= 8) return 66;
+  if (word.length <= 12) return 56;
+  return 46;
+}
+
 // ─── CarouselCard ─────────────────────────────────────────────────────────────
 
 function CarouselCard({ card, onCta }: { card: CarouselItem; onCta: () => void }) {
@@ -186,46 +197,63 @@ function CarouselCard({ card, onCta }: { card: CarouselItem; onCta: () => void }
   const showCta = () => {
     if (ctaShown.current) return;
     ctaShown.current = true;
-    Animated.timing(ctaAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    Animated.timing(ctaAnim, { toValue: 1, duration: 450, useNativeDriver: true }).start();
   };
 
   const checkReveal = (offsetY = 0) => {
     if (containerH.current === 0 || contentH.current === 0) return;
-    if (offsetY + containerH.current >= contentH.current - 20) showCta();
+    if (offsetY + containerH.current >= contentH.current - 24) showCta();
   };
 
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    checkReveal(e.nativeEvent.contentOffset.y);
-  };
+  const wordSize = mainWordFontSize(card.mainWord);
 
   return (
     <LinearGradient
-      colors={card.gradient}
+      colors={card.gradient as [string, string, ...string[]]}
       start={{ x: 0, y: 0 }}
-      end={{ x: 0, y: 1 }}
+      end={{ x: 0.25, y: 1 }}
       style={cs.card}>
+
+      {/* Halos décoratifs */}
+      <View style={cs.cardHalo} />
+      <View style={cs.cardHalo2} />
+
       <ScrollView
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
-        onScroll={onScroll}
+        onScroll={e => checkReveal(e.nativeEvent.contentOffset.y)}
         onLayout={e => { containerH.current = e.nativeEvent.layout.height; checkReveal(); }}
         onContentSizeChange={(_, h) => { contentH.current = h; checkReveal(); }}
         contentContainerStyle={cs.cardScroll}>
+
+        {/* Zone 1 — en-tête émotionnel */}
         <Text style={cs.cardIntro}>{'Je me sens'}</Text>
-        <Text style={cs.cardMainWord}>{card.mainWord}</Text>
+        <Text style={[cs.cardMainWord, { fontSize: wordSize, lineHeight: Math.round(wordSize * 1.06) }]}>
+          {card.mainWord}
+        </Text>
+
+        {/* Zone 2 — accroche */}
+        <View style={cs.accrocheWrap}>
+          <Text style={cs.accrocheText}>{card.accroche}</Text>
+        </View>
+
+        {/* Zone 3 — ressentis */}
         <View style={cs.pointsList}>
           {card.points.map((pt, i) => (
             <View key={i} style={cs.pointRow}>
-              <Text style={cs.pointBullet}>{'•'}</Text>
+              <Text style={cs.pointBullet}>{'–'}</Text>
               <Text style={cs.pointText}>{pt}</Text>
             </View>
           ))}
         </View>
-        <Animated.View style={{ opacity: ctaAnim, marginTop: 20, marginBottom: 8 }}>
+
+        {/* Zone 4 — CTA fade-in */}
+        <Animated.View style={[cs.ctaWrap, { opacity: ctaAnim }]}>
           <TouchableOpacity style={cs.ctaCardBtn} onPress={onCta} activeOpacity={0.8}>
             <Text style={cs.ctaCardBtnText}>{card.cta}</Text>
           </TouchableOpacity>
         </Animated.View>
+
       </ScrollView>
     </LinearGradient>
   );
@@ -233,8 +261,9 @@ function CarouselCard({ card, onCta }: { card: CarouselItem; onCta: () => void }
 
 // ─── DiscoveryCarousel ────────────────────────────────────────────────────────
 
-function DiscoveryCarousel({ onCta }: { onCta: (key: string) => void }) {
+function DiscoveryCarousel({ onCta, onBack }: { onCta: (key: string) => void; onBack: () => void }) {
   const scrollRef = useRef<ScrollView>(null);
+  const scrollX = useRef(new Animated.Value(0)).current;
   const [activeIdx, setActiveIdx] = useState(0);
 
   const goTo = (idx: number) => {
@@ -243,18 +272,25 @@ function DiscoveryCarousel({ onCta }: { onCta: (key: string) => void }) {
     setActiveIdx(idx);
   };
 
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const x = e.nativeEvent.contentOffset.x;
-    setActiveIdx(Math.round(x / CARD_W));
-  };
-
   return (
     <View style={cs.discoveryWrap}>
-      {/* Header */}
-      <Text style={cs.discoveryTitle}>{'Découverte'}</Text>
-      <Text style={cs.discoverySub}>{'Swipe pour explorer les modes →'}</Text>
 
-      {/* Carousel */}
+      {/* ── Header ── */}
+      <View style={cs.discoveryHeader}>
+        <TouchableOpacity
+          onPress={onBack}
+          style={cs.discoveryBackBtn}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          activeOpacity={0.65}>
+          <Text style={cs.discoveryBackText}>{'‹ Retour'}</Text>
+        </TouchableOpacity>
+        <View style={cs.discoveryTitleWrap}>
+          <Text style={cs.discoveryTitleText}>{'Découverte'}</Text>
+          <Text style={cs.discoverySubText}>{'Explore les modes internes, un par un'}</Text>
+        </View>
+      </View>
+
+      {/* ── Carousel ── */}
       <View style={cs.carouselContainer}>
         <ScrollView
           ref={scrollRef}
@@ -262,45 +298,43 @@ function DiscoveryCarousel({ onCta }: { onCta: (key: string) => void }) {
           showsHorizontalScrollIndicator={false}
           snapToInterval={CARD_W}
           decelerationRate="fast"
-          onScroll={onScroll}
           scrollEventThrottle={16}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+            { useNativeDriver: true }
+          )}
+          onMomentumScrollEnd={e => {
+            setActiveIdx(Math.round(e.nativeEvent.contentOffset.x / CARD_W));
+          }}
           contentContainerStyle={{ paddingHorizontal: PEEK }}>
-          {CAROUSEL_CARDS.map(card => (
-            <View key={card.key} style={{ width: CARD_W, flex: 1 }}>
-              <CarouselCard card={card} onCta={() => onCta(card.key)} />
-            </View>
-          ))}
+          {CAROUSEL_CARDS.map((card, i) => {
+            const inputRange = [(i - 1) * CARD_W, i * CARD_W, (i + 1) * CARD_W];
+            const scale = scrollX.interpolate({ inputRange, outputRange: [0.93, 1, 0.93], extrapolate: 'clamp' });
+            const opacity = scrollX.interpolate({ inputRange, outputRange: [0.60, 1, 0.60], extrapolate: 'clamp' });
+            return (
+              <Animated.View
+                key={card.key}
+                style={[cs.cardWrapper, { transform: [{ scale }], opacity }]}>
+                <CarouselCard card={card} onCta={() => onCta(card.key)} />
+              </Animated.View>
+            );
+          })}
         </ScrollView>
-
-        {/* Arrow gauche */}
-        {activeIdx > 0 && (
-          <TouchableOpacity
-            style={[cs.arrow, cs.arrowLeft]}
-            onPress={() => goTo(activeIdx - 1)}
-            activeOpacity={0.6}
-            hitSlop={{ top: 16, bottom: 16, left: 8, right: 8 }}>
-            <Text style={cs.arrowText}>{'‹'}</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Arrow droite */}
-        {activeIdx < CAROUSEL_CARDS.length - 1 && (
-          <TouchableOpacity
-            style={[cs.arrow, cs.arrowRight]}
-            onPress={() => goTo(activeIdx + 1)}
-            activeOpacity={0.6}
-            hitSlop={{ top: 16, bottom: 16, left: 8, right: 8 }}>
-            <Text style={cs.arrowText}>{'›'}</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
-      {/* Dots */}
+      {/* ── Pagination ── */}
       <View style={cs.dotsRow}>
         {CAROUSEL_CARDS.map((_, i) => (
-          <View key={i} style={[cs.dot, i === activeIdx && cs.dotActive]} />
+          <TouchableOpacity
+            key={i}
+            onPress={() => goTo(i)}
+            hitSlop={{ top: 10, bottom: 10, left: 5, right: 5 }}
+            activeOpacity={0.6}>
+            <View style={[cs.dot, i === activeIdx && cs.dotActive]} />
+          </TouchableOpacity>
         ))}
       </View>
+
     </View>
   );
 }
@@ -440,16 +474,10 @@ export default function CoachScreen() {
 
       {/* ── Mode Découverte — carrousel ── */}
       {isDiscovery && (
-        <View style={{ flex: 1 }}>
-          <TouchableOpacity
-            onPress={() => { setStep(1); setOpenEmotion(null); }}
-            style={styles.backBtnDiscovery}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            activeOpacity={0.65}>
-            <Text style={styles.backText}>{'‹ Retour'}</Text>
-          </TouchableOpacity>
-          <DiscoveryCarousel onCta={handleCta} />
-        </View>
+        <DiscoveryCarousel
+          onCta={handleCta}
+          onBack={() => { setStep(1); setOpenEmotion(null); }}
+        />
       )}
 
       {/* ── Modals ── */}
@@ -479,124 +507,192 @@ export default function CoachScreen() {
 // ─── Styles — carousel ────────────────────────────────────────────────────────
 
 const cs = StyleSheet.create({
+
+  // ── Wrap ────────────────────────────────────────────────────────────────────
   discoveryWrap: {
     flex: 1,
-    paddingTop: 8,
   },
-  discoveryTitle: {
-    fontSize: 13,
-    color: '#999',
-    textAlign: 'center',
-    fontWeight: '500',
-    marginBottom: 4,
+
+  // ── Header ──────────────────────────────────────────────────────────────────
+  discoveryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 20,
+    gap: 12,
   },
-  discoverySub: {
-    fontSize: 11,
-    color: '#BBBBBB',
-    textAlign: 'center',
-    marginBottom: 14,
+  discoveryBackBtn: {
+    paddingVertical: 6,
+    paddingRight: 4,
   },
-  carouselContainer: {
+  discoveryBackText: {
+    fontSize: 16,
+    color: '#7B61FF',
+    fontWeight: '600',
+  },
+  discoveryTitleWrap: {
     flex: 1,
-    position: 'relative',
   },
-  // Card
+  discoveryTitleText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1C1733',
+    letterSpacing: -0.4,
+  },
+  discoverySubText: {
+    fontSize: 12,
+    color: '#8B879A',
+    marginTop: 2,
+    letterSpacing: 0.1,
+  },
+
+  // ── Carousel container ───────────────────────────────────────────────────────
+  carouselContainer: {
+    height: CARD_H,
+  },
+
+  // ── Card wrapper (porte l'ombre + la scale animation) ───────────────────────
+  cardWrapper: {
+    width: CARD_W,
+    height: CARD_H,
+    shadowColor: '#3D2880',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.16,
+    shadowRadius: 28,
+    elevation: 10,
+  },
+
+  // ── Card ────────────────────────────────────────────────────────────────────
   card: {
     flex: 1,
-    borderRadius: 28,
+    borderRadius: 40,
     overflow: 'hidden',
   },
-  cardScroll: {
-    padding: 24,
-    paddingBottom: 32,
+
+  // ── Halos décoratifs ────────────────────────────────────────────────────────
+  cardHalo: {
+    position: 'absolute',
+    top: -90,
+    right: -90,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: 'rgba(255,255,255,0.22)',
   },
+  cardHalo2: {
+    position: 'absolute',
+    bottom: -70,
+    left: -50,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(255,255,255,0.11)',
+  },
+
+  // ── Contenu de la carte ─────────────────────────────────────────────────────
+  cardScroll: {
+    paddingHorizontal: 32,
+    paddingTop: 38,
+    paddingBottom: 40,
+  },
+
+  // Zone 1 — en-tête émotionnel
   cardIntro: {
     fontFamily: 'Georgia',
-    fontSize: 14,
+    fontSize: 22,
     fontStyle: 'italic',
-    color: '#4A3830',
-    marginBottom: 6,
+    color: 'rgba(28, 16, 8, 0.52)',
+    marginBottom: 2,
   },
   cardMainWord: {
     fontFamily: 'Georgia',
-    fontSize: 42,
     fontWeight: '600',
-    color: '#2A1A0A',
-    lineHeight: 50,
-    marginBottom: 24,
+    color: '#1A1208',
+    letterSpacing: -1.5,
+    marginBottom: 8,
   },
+
+  // Zone 2 — accroche
+  accrocheWrap: {
+    marginBottom: 32,
+  },
+  accrocheText: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    color: 'rgba(28, 16, 8, 0.42)',
+    letterSpacing: 0.3,
+  },
+
+  // Zone 3 — ressentis
   pointsList: {
-    gap: 10,
+    gap: 14,
   },
   pointRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
+    gap: 10,
   },
   pointBullet: {
-    fontSize: 14,
-    color: '#5A4030',
-    lineHeight: 22,
+    fontSize: 15,
+    color: 'rgba(28, 16, 8, 0.30)',
+    lineHeight: 24,
   },
   pointText: {
     flex: 1,
-    fontSize: 14,
-    color: '#3A2818',
-    lineHeight: 22,
+    fontSize: 15,
+    color: '#2E200E',
+    lineHeight: 24,
+    letterSpacing: 0.1,
+  },
+
+  // Zone 4 — CTA
+  ctaWrap: {
+    marginTop: 44,
+    marginBottom: 4,
   },
   ctaCardBtn: {
-    backgroundColor: 'rgba(255,255,255,0.6)',
-    borderRadius: 20,
-    paddingVertical: 12,
+    height: 58,
+    backgroundColor: 'rgba(255,255,255,0.52)',
+    borderRadius: 29,
     alignItems: 'center',
-    marginTop: 20,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.72)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
   },
   ctaCardBtnText: {
-    color: '#7C6CF2',
-    fontSize: 14,
-    fontWeight: '600',
+    color: '#6854E0',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
-  // Arrows
-  arrow: {
-    position: 'absolute',
-    top: '40%',
-    width: 36,
-    height: 56,
-    justifyContent: 'center',
-  },
-  arrowLeft: {
-    left: 2,
-    alignItems: 'flex-start',
-  },
-  arrowRight: {
-    right: 2,
-    alignItems: 'flex-end',
-  },
-  arrowText: {
-    fontSize: 28,
-    color: '#F5F0E8',
-    opacity: 0.7,
-  },
-  // Dots
+
+  // ── Pagination ───────────────────────────────────────────────────────────────
   dotsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 14,
+    gap: 7,
+    paddingTop: 18,
+    paddingBottom: 6,
   },
   dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#D0CCCC',
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#CDC9E4',
   },
   dotActive: {
-    width: 8,
+    width: 22,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#7C6CF2',
+    backgroundColor: '#7B61FF',
   },
+
 });
 
 // ─── Styles — shared ──────────────────────────────────────────────────────────

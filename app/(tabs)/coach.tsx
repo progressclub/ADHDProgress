@@ -8,8 +8,6 @@ import {
   ScrollView,
   Modal,
   Dimensions,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -149,23 +147,129 @@ const EMOTIONS: EmotionData[] = [
 // ─── Carousel dimensions ──────────────────────────────────────────────────────
 
 const { width: SW, height: SH } = Dimensions.get('window');
-const PEEK = 22;
-const CARD_W = SW - 2 * PEEK;
-const CARD_H = Math.max(380, Math.min(Math.round(SH * 0.64), 550));
+const CARD_W = Math.round(SW * 0.855);
+const PEEK = Math.round((SW - CARD_W) / 2);
+const CARD_H = Math.min(Math.round(SH * 0.64), 530);
 
 // ─── Carousel metadata ────────────────────────────────────────────────────────
 
-type CarouselMeta = { mainWord: string; gradient: string[] };
+type CarouselMeta = {
+  mainWord: string;
+  gradient: string[];
+  gStart: { x: number; y: number };
+  gEnd: { x: number; y: number };
+  mirror: string;
+  signs: [string, string, string];
+  ctaLabel: string;
+  textDark: string;
+  textMid: string;
+  textPale: string;
+  ctaBg: string;
+  ctaBorder: string;
+  ctaText: string;
+};
+
 type CarouselItem = EmotionData & CarouselMeta;
 
 const CAROUSEL_META: Record<string, CarouselMeta> = {
-  saturation:      { mainWord: 'saturé·e',       gradient: ['#FDE8D2', '#F5CFA8', '#EBB884'] },
-  paralysie:       { mainWord: 'paralysé·e',      gradient: ['#D8E9F5', '#BECFE8', '#A8BDD8'] },
-  anxieux:         { mainWord: 'anxieux·se',      gradient: ['#EDE0F5', '#DDD0EE', '#CCC0E4'] },
-  hyperfocus:      { mainWord: 'en hyperfocus',   gradient: ['#CBE8D8', '#B5D8C8', '#9EC8B4'] },
-  hyperstimulation:{ mainWord: 'hyperstimulé·e', gradient: ['#FEF0C2', '#FBE0A0', '#F5CC7A'] },
-  tempete:         { mainWord: 'en tempête',      gradient: ['#F5D4D4', '#EAC0C0', '#DEACAC'] },
-  alignement:      { mainWord: 'aligné·e',        gradient: ['#DCE9D4', '#C8D8C0', '#B4C9AB'] },
+  saturation: {
+    mainWord: 'saturé·e',
+    gradient: ['#FEE8D0', '#F6C898', '#EEA868'],
+    gStart: { x: 0.1, y: 0 }, gEnd: { x: 0.9, y: 1 },
+    mirror: 'Tout arrive en même temps.',
+    signs: [
+      "J'ai trop de pensées qui arrivent en même temps.",
+      'Les bruits, messages ou demandes me semblent trop forts.',
+      "Je n'arrive plus à savoir ce qui est prioritaire.",
+    ],
+    ctaLabel: 'Que faire de ma saturation ?',
+    textDark: '#3B1A06', textMid: 'rgba(59,26,6,0.72)', textPale: 'rgba(59,26,6,0.30)',
+    ctaBg: 'rgba(255,255,255,0.30)', ctaBorder: 'rgba(255,255,255,0.55)', ctaText: '#4A2004',
+  },
+  paralysie: {
+    mainWord: 'paralysé·e',
+    gradient: ['#DDE9F6', '#C6D8EE', '#B0C8E2'],
+    gStart: { x: 0.15, y: 0 }, gEnd: { x: 0.85, y: 1 },
+    mirror: "Je sais quoi faire, mais je n'arrive pas à commencer.",
+    signs: [
+      "Je reste bloqué·e devant des tâches pourtant simples.",
+      "Chaque action me paraît demander un effort énorme.",
+      "Je culpabilise de ne rien faire, mais ça ne me débloque pas.",
+    ],
+    ctaLabel: 'Que faire de ma paralysie ?',
+    textDark: '#0D1E30', textMid: 'rgba(13,30,48,0.72)', textPale: 'rgba(13,30,48,0.30)',
+    ctaBg: 'rgba(255,255,255,0.32)', ctaBorder: 'rgba(255,255,255,0.55)', ctaText: '#18304A',
+  },
+  anxieux: {
+    mainWord: 'anxieux·se',
+    gradient: ['#EEE2F6', '#E0D0EE', '#D2BEE6'],
+    gStart: { x: 0.05, y: 0 }, gEnd: { x: 0.95, y: 1 },
+    mirror: 'Mes pensées partent trop vite.',
+    signs: [
+      "J'imagine tout ce qui pourrait mal se passer.",
+      "J'ai du mal à rester sur une seule pensée à la fois.",
+      "Mon corps reste tendu, même quand rien n'est urgent.",
+    ],
+    ctaLabel: 'Que faire de mon anxiété ?',
+    textDark: '#280D3C', textMid: 'rgba(40,13,60,0.72)', textPale: 'rgba(40,13,60,0.30)',
+    ctaBg: 'rgba(255,255,255,0.28)', ctaBorder: 'rgba(255,255,255,0.52)', ctaText: '#3C1858',
+  },
+  hyperfocus: {
+    mainWord: 'en hyperfocus',
+    gradient: ['#CCE8DC', '#B5D8C8', '#9DC8B2'],
+    gStart: { x: 0.15, y: 0 }, gEnd: { x: 0.85, y: 1 },
+    mirror: 'Je suis totalement absorbé·e.',
+    signs: [
+      "Le temps passe sans que je m'en rende compte.",
+      "Tout ce qui n'est pas ma tâche disparaît de mon radar.",
+      "J'ai du mal à m'arrêter, même quand je le devrais.",
+    ],
+    ctaLabel: 'Que faire de mon hyperfocus ?',
+    textDark: '#0C2A1E', textMid: 'rgba(12,42,30,0.72)', textPale: 'rgba(12,42,30,0.30)',
+    ctaBg: 'rgba(255,255,255,0.30)', ctaBorder: 'rgba(255,255,255,0.52)', ctaText: '#164030',
+  },
+  hyperstimulation: {
+    mainWord: 'hyperstimulé·e',
+    gradient: ['#FEF0C2', '#FAD888', '#F4C060'],
+    gStart: { x: 0.1, y: 0 }, gEnd: { x: 0.9, y: 1 },
+    mirror: "J'ai besoin d'intensité maintenant.",
+    signs: [
+      "Je cherche quelque chose de nouveau ou stimulant.",
+      "Je passe vite d'une idée, d'une envie ou d'une app à l'autre.",
+      "J'ai du mal à ralentir, même quand je suis déjà fatigué·e.",
+    ],
+    ctaLabel: 'Que faire de mon hyperstimulation ?',
+    textDark: '#3A2004', textMid: 'rgba(58,32,4,0.72)', textPale: 'rgba(58,32,4,0.30)',
+    ctaBg: 'rgba(255,255,255,0.32)', ctaBorder: 'rgba(255,255,255,0.60)', ctaText: '#4A2800',
+  },
+  tempete: {
+    mainWord: 'en tempête',
+    gradient: ['#F6D5E2', '#EEC0D2', '#E4AABF'],
+    gStart: { x: 0.1, y: 0 }, gEnd: { x: 0.9, y: 1 },
+    mirror: 'Mes émotions prennent toute la place.',
+    signs: [
+      "Une émotion prend le dessus d'un coup.",
+      "Je réagis plus fort que je ne voudrais.",
+      "J'ai du mal à retrouver du recul sur ce que je ressens.",
+    ],
+    ctaLabel: 'Explorer ma tempête émotionnelle',
+    textDark: '#380C18', textMid: 'rgba(56,12,24,0.72)', textPale: 'rgba(56,12,24,0.30)',
+    ctaBg: 'rgba(255,255,255,0.30)', ctaBorder: 'rgba(255,255,255,0.52)', ctaText: '#4A1428',
+  },
+  alignement: {
+    mainWord: 'aligné·e',
+    gradient: ['#DAE8D4', '#C4D8BA', '#AECAA0'],
+    gStart: { x: 0.15, y: 0 }, gEnd: { x: 0.85, y: 1 },
+    mirror: 'Je me sens plus clair·e.',
+    signs: [
+      "J'arrive à choisir une chose sans me disperser.",
+      "Mon énergie est plus stable et plus fluide.",
+      "Je peux avancer sans me forcer brutalement.",
+    ],
+    ctaLabel: 'Préserver cet état',
+    textDark: '#0E2410', textMid: 'rgba(14,36,16,0.72)', textPale: 'rgba(14,36,16,0.30)',
+    ctaBg: 'rgba(255,255,255,0.32)', ctaBorder: 'rgba(255,255,255,0.55)', ctaText: '#1A3A1C',
+  },
 };
 
 const CAROUSEL_ORDER = [
@@ -181,80 +285,66 @@ const CAROUSEL_CARDS: CarouselItem[] = CAROUSEL_ORDER.map(key => ({
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function mainWordFontSize(word: string): number {
-  if (word.length <= 8) return 66;
-  if (word.length <= 12) return 56;
-  return 46;
+  const len = word.length;
+  if (len <= 8) return 54;
+  if (len <= 10) return 46;
+  if (len <= 13) return 38;
+  return 32;
 }
 
 // ─── CarouselCard ─────────────────────────────────────────────────────────────
 
 function CarouselCard({ card, onCta }: { card: CarouselItem; onCta: () => void }) {
-  const ctaAnim = useRef(new Animated.Value(0)).current;
-  const ctaShown = useRef(false);
-  const containerH = useRef(0);
-  const contentH = useRef(0);
-
-  const showCta = () => {
-    if (ctaShown.current) return;
-    ctaShown.current = true;
-    Animated.timing(ctaAnim, { toValue: 1, duration: 450, useNativeDriver: true }).start();
-  };
-
-  const checkReveal = (offsetY = 0) => {
-    if (containerH.current === 0 || contentH.current === 0) return;
-    if (offsetY + containerH.current >= contentH.current - 24) showCta();
-  };
-
   const wordSize = mainWordFontSize(card.mainWord);
 
   return (
     <LinearGradient
       colors={card.gradient as [string, string, ...string[]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.25, y: 1 }}
+      start={card.gStart}
+      end={card.gEnd}
       style={cs.card}>
 
-      {/* Halos décoratifs */}
-      <View style={cs.cardHalo} />
-      <View style={cs.cardHalo2} />
+      {/* Formes d'ambiance organiques (non-circulaires) */}
+      <View style={cs.cardBlob1} />
+      <View style={cs.cardBlob2} />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        scrollEventThrottle={16}
-        onScroll={e => checkReveal(e.nativeEvent.contentOffset.y)}
-        onLayout={e => { containerH.current = e.nativeEvent.layout.height; checkReveal(); }}
-        onContentSizeChange={(_, h) => { contentH.current = h; checkReveal(); }}
-        contentContainerStyle={cs.cardScroll}>
+      <View style={cs.cardContent}>
 
-        {/* Zone 1 — en-tête émotionnel */}
-        <Text style={cs.cardIntro}>{'Je me sens'}</Text>
-        <Text style={[cs.cardMainWord, { fontSize: wordSize, lineHeight: Math.round(wordSize * 1.06) }]}>
-          {card.mainWord}
-        </Text>
-
-        {/* Zone 2 — accroche */}
-        <View style={cs.accrocheWrap}>
-          <Text style={cs.accrocheText}>{card.accroche}</Text>
+        {/* ── Zone haute : identité émotionnelle ── */}
+        <View>
+          <Text style={[cs.cardIntro, { color: card.textMid }]}>{'Je me sens'}</Text>
+          <Text
+            adjustsFontSizeToFit
+            numberOfLines={1}
+            minimumFontScale={0.6}
+            style={[cs.cardMainWord, { fontSize: wordSize, lineHeight: Math.round(wordSize * 1.06), color: card.textDark }]}>
+            {card.mainWord}
+          </Text>
+          <Text style={[cs.cardMirror, { color: card.textMid }]}>{card.mirror}</Text>
         </View>
 
-        {/* Zone 3 — ressentis */}
-        <View style={cs.pointsList}>
-          {card.points.map((pt, i) => (
-            <View key={i} style={cs.pointRow}>
-              <Text style={cs.pointBullet}>{'–'}</Text>
-              <Text style={cs.pointText}>{pt}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Zone 4 — CTA fade-in */}
-        <Animated.View style={[cs.ctaWrap, { opacity: ctaAnim }]}>
-          <TouchableOpacity style={cs.ctaCardBtn} onPress={onCta} activeOpacity={0.8}>
-            <Text style={cs.ctaCardBtnText}>{card.cta}</Text>
+        {/* ── Zone basse : signes + CTA (ancrés en bas) ── */}
+        <View>
+          <View style={[cs.cardSep, { backgroundColor: card.textPale }]} />
+          <View style={cs.signsList}>
+            {card.signs.map((sign, i) => (
+              <View key={i} style={cs.signRow}>
+                <Text style={[cs.signNum, { color: card.textPale }]}>{`0${i + 1}`}</Text>
+                <Text style={[cs.signText, { color: card.textMid }]}>{sign}</Text>
+              </View>
+            ))}
+          </View>
+          <TouchableOpacity
+            style={[cs.ctaCardBtn, { backgroundColor: card.ctaBg, borderColor: card.ctaBorder }]}
+            onPress={onCta}
+            activeOpacity={0.82}>
+            <Text style={[cs.ctaCardBtnText, { color: card.ctaText }]} numberOfLines={2}>
+              {card.ctaLabel}
+            </Text>
           </TouchableOpacity>
-        </Animated.View>
+        </View>
 
-      </ScrollView>
+      </View>
     </LinearGradient>
   );
 }
@@ -279,14 +369,13 @@ function DiscoveryCarousel({ onCta, onBack }: { onCta: (key: string) => void; on
       <View style={cs.discoveryHeader}>
         <TouchableOpacity
           onPress={onBack}
-          style={cs.discoveryBackBtn}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           activeOpacity={0.65}>
           <Text style={cs.discoveryBackText}>{'‹ Retour'}</Text>
         </TouchableOpacity>
-        <View style={cs.discoveryTitleWrap}>
+        <View style={cs.discoveryTitleBlock}>
           <Text style={cs.discoveryTitleText}>{'Découverte'}</Text>
-          <Text style={cs.discoverySubText}>{'Explore les modes internes, un par un'}</Text>
+          <Text style={cs.discoverySubText}>{'Explore les modes internes, un par un.'}</Text>
         </View>
       </View>
 
@@ -301,7 +390,7 @@ function DiscoveryCarousel({ onCta, onBack }: { onCta: (key: string) => void; on
           scrollEventThrottle={16}
           onScroll={Animated.event(
             [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-            { useNativeDriver: true }
+            { useNativeDriver: false }
           )}
           onMomentumScrollEnd={e => {
             setActiveIdx(Math.round(e.nativeEvent.contentOffset.x / CARD_W));
@@ -309,8 +398,8 @@ function DiscoveryCarousel({ onCta, onBack }: { onCta: (key: string) => void; on
           contentContainerStyle={{ paddingHorizontal: PEEK }}>
           {CAROUSEL_CARDS.map((card, i) => {
             const inputRange = [(i - 1) * CARD_W, i * CARD_W, (i + 1) * CARD_W];
-            const scale = scrollX.interpolate({ inputRange, outputRange: [0.93, 1, 0.93], extrapolate: 'clamp' });
-            const opacity = scrollX.interpolate({ inputRange, outputRange: [0.60, 1, 0.60], extrapolate: 'clamp' });
+            const scale = scrollX.interpolate({ inputRange, outputRange: [0.94, 1, 0.94], extrapolate: 'clamp' });
+            const opacity = scrollX.interpolate({ inputRange, outputRange: [0.50, 1, 0.50], extrapolate: 'clamp' });
             return (
               <Animated.View
                 key={card.key}
@@ -508,170 +597,176 @@ export default function CoachScreen() {
 
 const cs = StyleSheet.create({
 
-  // ── Wrap ────────────────────────────────────────────────────────────────────
+  // ── Wrap ─────────────────────────────────────────────────────────────────────
   discoveryWrap: {
     flex: 1,
+    backgroundColor: '#F8F6FF',
   },
 
-  // ── Header ──────────────────────────────────────────────────────────────────
+  // ── Header ───────────────────────────────────────────────────────────────────
   discoveryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 20,
-    gap: 12,
-  },
-  discoveryBackBtn: {
-    paddingVertical: 6,
-    paddingRight: 4,
+    paddingHorizontal: 24,
+    paddingTop: 6,
+    paddingBottom: 24,
   },
   discoveryBackText: {
     fontSize: 16,
     color: '#7B61FF',
     fontWeight: '600',
+    marginBottom: 18,
+    letterSpacing: 0.05,
   },
-  discoveryTitleWrap: {
-    flex: 1,
-  },
+  discoveryTitleBlock: {},
   discoveryTitleText: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1C1733',
-    letterSpacing: -0.4,
+    fontSize: 38,
+    fontWeight: '800',
+    color: '#1E1C35',
+    letterSpacing: -0.7,
+    lineHeight: 42,
   },
   discoverySubText: {
-    fontSize: 12,
-    color: '#8B879A',
-    marginTop: 2,
-    letterSpacing: 0.1,
+    fontSize: 16,
+    color: '#8E8AA0',
+    marginTop: 5,
+    lineHeight: 22,
+    fontWeight: '400',
   },
 
-  // ── Carousel container ───────────────────────────────────────────────────────
+  // ── Carousel container ────────────────────────────────────────────────────────
   carouselContainer: {
     height: CARD_H,
   },
 
-  // ── Card wrapper (porte l'ombre + la scale animation) ───────────────────────
+  // ── Card wrapper ──────────────────────────────────────────────────────────────
   cardWrapper: {
     width: CARD_W,
     height: CARD_H,
-    shadowColor: '#3D2880',
+    shadowColor: '#1A0B3C',
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.16,
+    shadowOpacity: 0.12,
     shadowRadius: 28,
     elevation: 10,
   },
 
-  // ── Card ────────────────────────────────────────────────────────────────────
+  // ── Card ─────────────────────────────────────────────────────────────────────
   card: {
     flex: 1,
-    borderRadius: 40,
+    borderRadius: 36,
     overflow: 'hidden',
   },
 
-  // ── Halos décoratifs ────────────────────────────────────────────────────────
-  cardHalo: {
+  // Blobs d'ambiance organiques
+  cardBlob1: {
     position: 'absolute',
-    top: -90,
-    right: -90,
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    top: -60,
+    right: -50,
+    width: 200,
+    height: 155,
+    borderTopLeftRadius: 100,
+    borderTopRightRadius: 52,
+    borderBottomLeftRadius: 82,
+    borderBottomRightRadius: 128,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+    transform: [{ rotate: '-20deg' }],
   },
-  cardHalo2: {
+  cardBlob2: {
     position: 'absolute',
-    bottom: -70,
-    left: -50,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(255,255,255,0.11)',
+    bottom: -50,
+    left: -30,
+    width: 160,
+    height: 122,
+    borderTopLeftRadius: 58,
+    borderTopRightRadius: 96,
+    borderBottomLeftRadius: 80,
+    borderBottomRightRadius: 44,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    transform: [{ rotate: '13deg' }],
   },
 
-  // ── Contenu de la carte ─────────────────────────────────────────────────────
-  cardScroll: {
-    paddingHorizontal: 32,
-    paddingTop: 38,
-    paddingBottom: 40,
+  // ── Contenu sans scroll — 2 zones : haut ancré en haut, bas ancré en bas ────
+  cardContent: {
+    flex: 1,
+    paddingHorizontal: 28,
+    paddingTop: 32,
+    paddingBottom: 26,
+    justifyContent: 'space-between',
   },
 
-  // Zone 1 — en-tête émotionnel
+  // Zone 1 — « Je me sens »
   cardIntro: {
     fontFamily: 'Georgia',
-    fontSize: 22,
+    fontSize: 21,
     fontStyle: 'italic',
-    color: 'rgba(28, 16, 8, 0.52)',
-    marginBottom: 2,
+    marginBottom: 6,
   },
+
+  // Zone 2 — Mot principal
   cardMainWord: {
     fontFamily: 'Georgia',
-    fontWeight: '600',
-    color: '#1A1208',
-    letterSpacing: -1.5,
-    marginBottom: 8,
+    fontWeight: '700',
+    letterSpacing: -0.8,
+    marginBottom: 10,
   },
 
-  // Zone 2 — accroche
-  accrocheWrap: {
-    marginBottom: 32,
-  },
-  accrocheText: {
-    fontSize: 13,
+  // Zone 3 — Phrase miroir
+  cardMirror: {
+    fontSize: 18,
     fontStyle: 'italic',
-    color: 'rgba(28, 16, 8, 0.42)',
-    letterSpacing: 0.3,
+    lineHeight: 26,
+    letterSpacing: 0.05,
   },
 
-  // Zone 3 — ressentis
-  pointsList: {
+  // Séparateur éditorial
+  cardSep: {
+    height: 1,
+    width: 36,
+    borderRadius: 1,
+    marginBottom: 16,
+  },
+
+  // 3 signes
+  signsList: {
     gap: 14,
   },
-  pointRow: {
+  signRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
   },
-  pointBullet: {
-    fontSize: 15,
-    color: 'rgba(28, 16, 8, 0.30)',
-    lineHeight: 24,
+  signNum: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.7,
+    width: 24,
+    paddingTop: 2,
+    lineHeight: 17,
   },
-  pointText: {
+  signText: {
     flex: 1,
-    fontSize: 15,
-    color: '#2E200E',
-    lineHeight: 24,
-    letterSpacing: 0.1,
+    fontSize: 16,
+    fontWeight: '400',
+    lineHeight: 23,
+    letterSpacing: 0.05,
   },
 
-  // Zone 4 — CTA
-  ctaWrap: {
-    marginTop: 44,
-    marginBottom: 4,
-  },
+  // CTA — toujours en bas de la zone basse
   ctaCardBtn: {
-    height: 58,
-    backgroundColor: 'rgba(255,255,255,0.52)',
-    borderRadius: 29,
+    marginTop: 22,
+    height: 56,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
+    borderWidth: 1.5,
+    paddingHorizontal: 16,
   },
   ctaCardBtnText: {
-    color: '#6854E0',
     fontSize: 15,
     fontWeight: '700',
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
+    textAlign: 'center',
   },
 
-  // ── Pagination ───────────────────────────────────────────────────────────────
+  // ── Pagination ────────────────────────────────────────────────────────────────
   dotsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -684,7 +779,7 @@ const cs = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: '#CDC9E4',
+    backgroundColor: '#C4C0D8',
   },
   dotActive: {
     width: 22,

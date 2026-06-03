@@ -6,8 +6,8 @@ import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
-const PRIMARY = '#7C6CF2';
-const INACTIVE = '#9CA3AF';
+const PRIMARY = '#7B61FF';
+const INACTIVE = '#C2BECF';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -20,19 +20,19 @@ export default function TabLayout() {
         tabBarActiveTintColor: PRIMARY,
         tabBarInactiveTintColor: INACTIVE,
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '500',
           marginBottom: Platform.OS === 'ios' ? 0 : 4,
         },
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopColor: '#F0EDF8',
-          borderTopWidth: 1,
-          elevation: 16,
-          shadowColor: '#7C6CF2',
-          shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.06,
-          shadowRadius: 12,
+          backgroundColor: 'rgba(250,249,255,0.94)',
+          borderTopColor: 'rgba(224,218,248,0.6)',
+          borderTopWidth: 0.5,
+          elevation: 8,
+          shadowColor: '#4A3890',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.05,
+          shadowRadius: 10,
         },
       }}>
       <Tabs.Screen

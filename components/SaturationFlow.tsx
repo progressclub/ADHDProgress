@@ -1,24 +1,27 @@
-import React, { useState, useRef, useCallback } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  StyleSheet,
-  Animated,
-  ScrollView,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import { BellOff, Sun, VolumeX, PanelLeftClose, DoorOpen, Shirt, ListTodo, Cloud, Anchor, Layers, Heart, BatteryLow, Sparkles, Feather } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { BlurView } from 'expo-blur';
+import { Anchor, BatteryLow, BellOff, Cloud, DoorOpen, Feather, Heart, Layers, ListTodo, PanelLeftClose, Shirt, Sparkles, Sun, VolumeX, X } from 'lucide-react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+} from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useDayTasks, DayTask } from '@/contexts/DayTasksContext';
+import { DayTask, useDayTasks } from '@/contexts/DayTasksContext';
 
 const C = {
   bg: '#F5F3FF',
@@ -543,6 +546,16 @@ const step3CardStyles = StyleSheet.create({
     fontSize: 14, color: C.text, lineHeight: 22,
     paddingVertical: 4, paddingBottom: 8, minHeight: 40,
   },
+  inputWrap: { position: 'relative', minHeight: 40 },
+  placeholderOverlay: {
+    fontSize: 14, lineHeight: 22, color: C.primaryMuted,
+    paddingTop: 4, paddingBottom: 8,
+  },
+  inputAbsolute: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+  },
+  saveRow: { alignItems: 'flex-end', marginTop: 4 },
+  saveBtnText: { fontSize: 13, color: C.primary, fontWeight: '600' },
   micro: { fontSize: 12, color: C.primary, marginTop: 8, lineHeight: 17, fontStyle: 'italic' },
   chipsWrap: {
     flexDirection: 'row', flexWrap: 'wrap',
@@ -556,6 +569,8 @@ const step3CardStyles = StyleSheet.create({
   chipText: { fontSize: 13, color: C.primary, fontWeight: '600' },
   chipX: { fontSize: 11, color: C.primaryMuted, fontWeight: '700' },
 });
+
+const capitalizeFirst = (s: string) => (s.length === 0 ? s : s[0].toLocaleUpperCase() + s.slice(1));
 
 function BrainCard({
   card,
@@ -583,7 +598,7 @@ function BrainCard({
   };
 
   const addChip = () => {
-    const text = inputText.trim();
+    const text = capitalizeFirst(inputText.trim());
     if (!text) return;
     onChange([...values, text]);
     setInputText('');
@@ -628,17 +643,34 @@ function BrainCard({
               ))}
             </View>
           )}
-          <TextInput
-            style={step3CardStyles.input}
-            value={inputText}
-            onChangeText={setInputText}
-            onSubmitEditing={addChip}
-            placeholder={values.length > 0 ? 'Ajouter un autre...' : card.placeholder}
-            placeholderTextColor={C.primaryMuted}
-            autoCapitalize="none"
-            returnKeyType="done"
-            blurOnSubmit={false}
-          />
+          <View style={step3CardStyles.inputWrap}>
+            {!inputText && (
+              <Text style={step3CardStyles.placeholderOverlay} pointerEvents="none">
+                {values.length > 0 ? 'Ajouter un autre...' : capitalizeFirst(card.placeholder)}
+              </Text>
+            )}
+            <TextInput
+              style={[step3CardStyles.input, !inputText && step3CardStyles.inputAbsolute]}
+              value={inputText}
+              onChangeText={setInputText}
+              onSubmitEditing={addChip}
+              placeholder=""
+              placeholderTextColor="transparent"
+              autoCapitalize="none"
+              returnKeyType="done"
+              blurOnSubmit={false}
+            />
+          </View>
+          {inputText.trim().length > 0 && (
+            <View style={step3CardStyles.saveRow}>
+              <TouchableOpacity
+                onPress={addChip}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.6}>
+                <Text style={step3CardStyles.saveBtnText}>Enregistrer</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           <Text style={step3CardStyles.micro}>{card.microMessage}</Text>
         </View>
       </Animated.View>
@@ -1024,33 +1056,56 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
             </TouchableOpacity>
           )}
 
-          {(selectedCard || autoSelected) && (
-            <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.validationCard}>
-              {autoSelected ? (
-                <>
-                  <Text style={styles.validationSub}>
-                    Pas grave. Quand choisir est déjà trop, on commence par le plus simple : couper les notifications pendant quelques minutes.
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.ctaBtn, { marginTop: 14 }]}
-                    onPress={() => { setSelectedAction('dnd'); setAutoSelected(false); }}
-                    activeOpacity={0.82}>
-                    <Text style={styles.ctaBtnText}>Ok, je commence par ça</Text>
-                  </TouchableOpacity>
-                </>
-              ) : selectedCard ? (
-                <>
-                  <Text style={styles.validationSub}>{selectedCard.message}</Text>
-                  <TouchableOpacity
-                    style={[styles.ctaBtn, { marginTop: 14 }]}
-                    onPress={() => advanceTo(2)}
-                    activeOpacity={0.82}>
-                    <Text style={styles.ctaBtnText}>{selectedCard.btnLabel}</Text>
-                  </TouchableOpacity>
-                </>
-              ) : null}
-            </TouchableOpacity>
-          )}
+          <Modal
+            visible={Boolean(selectedCard || autoSelected)}
+            transparent
+            animationType="fade"
+            onRequestClose={deselect}>
+            <Pressable style={styles.validationBackdrop} onPress={deselect}>
+              <BlurView
+                intensity={18}
+                tint="dark"
+                style={StyleSheet.absoluteFill}
+                experimentalBlurMethod="dimezisBlurView"
+              />
+              <View
+                style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.12)' }]}
+                pointerEvents="none"
+              />
+              <Pressable style={styles.validationModalCard} onPress={() => {}}>
+                <TouchableOpacity
+                  style={styles.validationModalClose}
+                  onPress={deselect}
+                  hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                  activeOpacity={0.6}>
+                  <X size={20} color={C.textSub} strokeWidth={2} />
+                </TouchableOpacity>
+                {autoSelected ? (
+                  <>
+                    <Text style={styles.validationSub}>
+                      Pas grave. Quand choisir est déjà trop, on commence par le plus simple : couper les notifications pendant quelques minutes.
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.ctaBtn, { marginTop: 14 }]}
+                      onPress={() => { setSelectedAction('dnd'); setAutoSelected(false); }}
+                      activeOpacity={0.82}>
+                      <Text style={styles.ctaBtnText}>Ok, je commence par ça</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : selectedCard ? (
+                  <>
+                    <Text style={styles.validationSub}>{selectedCard.message}</Text>
+                    <TouchableOpacity
+                      style={[styles.ctaBtn, { marginTop: 14 }]}
+                      onPress={() => advanceTo(2)}
+                      activeOpacity={0.82}>
+                      <Text style={styles.ctaBtnText}>{selectedCard.btnLabel}</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : null}
+              </Pressable>
+            </Pressable>
+          </Modal>
         </View>
       </TouchableWithoutFeedback>
     );
@@ -1542,6 +1597,7 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
           keyboardDismissMode="on-drag"
           enableOnAndroid={true}
           extraScrollHeight={80}
+          enableResetScrollToCoords={false}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32, paddingTop: insets.top + 8 }}>
           <Animated.View style={{ opacity: fadeAnim, transform: [{ translateX: slideAnim }] }}>
@@ -1629,14 +1685,37 @@ const styles = StyleSheet.create({
   helpBtn: { alignItems: 'center', paddingVertical: 12, marginTop: 2 },
   helpBtnText: { fontSize: 14, color: C.textSub, textDecorationLine: 'underline' },
 
-  // Step 1 — carte de validation
-  validationCard: {
-    backgroundColor: C.surface, borderRadius: 14, padding: 16,
-    marginBottom: 16, borderWidth: 1, borderColor: C.border,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
-  },
+  // Step 1 — carte de validation (modal overlay centré + blur)
   validationSub: { fontSize: 14, color: C.textSub, lineHeight: 22 },
+  validationBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  validationModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: C.surface,
+    borderRadius: 16,
+    paddingTop: 40,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  validationModalClose: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    padding: 6,
+    zIndex: 2,
+  },
 
   // Step 2 — technique cards
   techniqueCard: {

@@ -12,6 +12,8 @@ import { StatusBar } from 'expo-status-bar';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDayTasks } from '@/contexts/DayTasksContext';
+import Logo from '@/components/Logo';
+import { PROFIL_KEY } from '@/components/Onboarding';
 
 const OBJECTIF_KEY = 'adhd_objectif_v1';
 const PROGRAMME_WEEK_KEY = 'adhd_programme_week_v1';
@@ -64,15 +66,17 @@ export default function HomeScreen() {
   const { todayTasks, persistTodayTasks } = useDayTasks();
   const [objectif, setObjectif] = useState(DEFAULT_OBJECTIF);
   const [showProgrammeBanner, setShowProgrammeBanner] = useState(false);
+  const [prenom, setPrenom] = useState('');
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   // Reload objective + recheck banner every time screen is focused
   useFocusEffect(
     useCallback(() => {
-      AsyncStorage.multiGet([OBJECTIF_KEY, PROGRAMME_WEEK_KEY, BANNER_DISMISSED_KEY])
-        .then(([[, obj], [, progWeek], [, dismissedWeek]]) => {
+      AsyncStorage.multiGet([OBJECTIF_KEY, PROGRAMME_WEEK_KEY, BANNER_DISMISSED_KEY, PROFIL_KEY])
+        .then(([[, obj], [, progWeek], [, dismissedWeek], [, profil]]) => {
           setObjectif(obj ?? DEFAULT_OBJECTIF);
           setShowProgrammeBanner(shouldShowBanner(progWeek, dismissedWeek));
+          if (profil) setPrenom(JSON.parse(profil).prenom ?? '');
         });
     }, [])
   );
@@ -117,7 +121,7 @@ export default function HomeScreen() {
 
       {/* Fixed header */}
       <View style={styles.header}>
-        <Text style={styles.logo}>ADHD<Text style={styles.logoAccent}>Progress</Text></Text>
+        <Logo size="compact" />
       </View>
 
       <ScrollView
@@ -127,7 +131,7 @@ export default function HomeScreen() {
 
         {/* Greeting */}
         <View style={styles.greeting}>
-          <Text style={styles.greetingText}>Bonjour Aron 👋</Text>
+          <Text style={styles.greetingText}>Bonjour {prenom} 👋</Text>
           <Text style={styles.date}>{dateStr}</Text>
         </View>
 
@@ -227,8 +231,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
-  logo: { fontSize: 20, fontWeight: '800', color: C.text, letterSpacing: -0.3 },
-  logoAccent: { color: C.primary },
 
   // Greeting
   greeting: { marginBottom: 16 },

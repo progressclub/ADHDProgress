@@ -57,4 +57,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#0a7ea4',
   },
-});
+});/

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import SaturationFlow from '@/components/SaturationFlow';
 import SaturationDiscovery from '@/components/SaturationDiscovery';
+import ProtocoleNeutre from '@/components/ProtocoleNeutre';
+import Logo from '@/components/Logo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from 'expo-router';
+import { accorder } from '@/utils/accorder';
+import { PROFIL_KEY } from '@/components/Onboarding';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,90 +49,78 @@ type EmotionData = {
   cta: string;
 };
 
-const EMOTIONS: EmotionData[] = [
-  {
-    key: 'anxieux',
-    label: 'Je me sens anxieux',
-    accroche: "Mes pensées s'emballent.",
-    points: [
-      "Mes pensées s'emballent et je n'arrive pas à les arrêter.",
-      'J\'ai du mal à me concentrer sur une seule chose à la fois.',
-      "Mon corps est tendu, comme en état d'alerte permanent.",
-      'Je ressens une inquiétude diffuse même sans raison précise.',
-      "J'anticipe le pire et j'ai du mal à me rassurer.",
-      'Je me sens agité, incapable de vraiment me poser.',
-    ],
-    cta: 'Que faire de mon anxiété ?',
-  },
-  {
-    key: 'hyperfocus',
-    label: 'Je me sens hyperfocus',
-    accroche: 'Je suis dans ma bulle.',
-    points: [
-      'Je suis complètement absorbé par ce que je fais.',
-      "Le temps défile sans que je m'en rende compte.",
-      "J'ai du mal à m'arrêter même quand je le devrais.",
-      'Tout ce qui est en dehors de ma tâche disparaît de mon radar.',
-      'Je peux oublier de manger, de bouger, de répondre aux autres.',
-      'Je me sens dans ma bulle, presque intouchable.',
-    ],
-    cta: 'Que faire de mon hyperfocus ?',
-  },
+function buildEmotions(genre: string): EmotionData[] {
+  return [
   {
     key: 'saturation',
     label: 'Je suis en train de saturer',
-    accroche: 'Mon cerveau est plein.',
+    accroche: 'Tout devient trop.',
     points: [
-      "Mon cerveau reçoit trop d'informations en même temps.",
-      "J'ai l'impression que mes pensées s'accumulent sans pouvoir les trier.",
-      'Les bruits, les sollicitations, tout me semble trop fort.',
-      "Je deviens irritable pour des choses qui normalement ne m'affectent pas.",
-      "Je ressens une fatigue qui vient de l'intérieur, pas juste physique.",
-      "Je n'arrive plus à décider ce qui est prioritaire.",
+      'Trop de choses arrivent en même temps.',
+      "Je n'arrive plus à trier mes pensées ni à décider.",
+      'Les bruits, les demandes ou les imprévus deviennent difficiles à supporter.',
     ],
-    cta: 'Que faire de ma saturation ?',
+    cta: "M'aider à faire redescendre la saturation",
   },
   {
     key: 'paralysie',
-    label: 'Je me sens paralysé',
-    accroche: "Je n'arrive plus à agir.",
+    label: "Je n'arrive plus à agir",
+    accroche: "Je sais quoi faire, mais je n'arrive pas à commencer.",
     points: [
-      "Je sais ce que j'ai à faire mais je n'arrive pas à commencer.",
-      'Mon corps et mon esprit semblent figés, comme bloqués.',
-      "J'évite les tâches même quand elles sont simples.",
-      'Je me sens coupable de ne rien faire mais ça ne change rien.',
-      'Chaque action me semble demander un effort disproportionné.',
-      "J'ai l'impression d'être spectateur de ma propre immobilité.",
+      'Même une petite tâche me paraît énorme.',
+      "Je reste immobile, j'évite ou je passe d'une chose à l'autre.",
+      "Je culpabilise, mais cela ne m'aide pas à démarrer.",
     ],
-    cta: 'Que faire de ma paralysie ?',
+    cta: "M'aider à commencer",
   },
   {
-    key: 'hyperstimulation',
-    label: "J'ai besoin d'intensité",
-    accroche: "J'ai besoin d'intensité.",
+    key: 'anxieux',
+    label: 'Mon anxiété monte',
+    accroche: 'Mes pensées et mon corps restent en alerte.',
     points: [
-      "Je m'ennuie profondément et cet ennui est presque douloureux.",
-      "J'ai envie de quelque chose de nouveau, de stimulant, maintenant.",
-      'Je prends des décisions impulsives pour ressentir quelque chose.',
-      'J\'ai du mal à rester en place, mon corps veut bouger.',
-      'Je cherche de la dopamine sans vraiment savoir où la trouver.',
-      "Je saute d'une idée à l'autre sans réussir à me fixer.",
+      'Mes pensées tournent vite et anticipent ce qui pourrait mal se passer.',
+      accorder(
+        'Je me sens tendu, agité ou incapable de me poser.',
+        'Je me sens tendue, agitée ou incapable de me poser.',
+        "Je ressens de la tension, de l'agitation ou une difficulté à me poser.",
+        genre,
+      ),
+      "J'ai du mal à concentrer mon attention sur ce qui se passe maintenant.",
     ],
-    cta: 'Que faire de mon hyperstimulation ?',
+    cta: "M'aider à faire baisser la pression",
   },
   {
-    key: 'tempete',
+    key: 'hyperfocus',
+    label: "Je n'arrive plus à décrocher",
+    accroche: 'Toute mon attention est prise par une seule chose.',
+    points: [
+      'Je ne vois plus le temps passer.',
+      "J'oublie ce qui existe autour de moi, y compris mes besoins.",
+      "Je sais que je devrais m'arrêter, mais changer d'activité me semble très difficile.",
+    ],
+    cta: "M'aider à décrocher",
+  },
+  {
+    key: 'besoin_stimulation',
+    label: "J'ai besoin de stimulation",
+    accroche: "L'ennui devient difficile à supporter.",
+    points: [
+      "J'ai besoin que quelque chose se passe maintenant.",
+      "Je cherche à bouger, changer d'activité ou découvrir quelque chose de nouveau.",
+      "Je risque d'agir impulsivement simplement pour sortir de cet état.",
+    ],
+    cta: "Trouver une stimulation qui m'aide",
+  },
+  {
+    key: 'submerge',
     label: 'Mes émotions prennent toute la place',
-    accroche: 'Mes émotions sont plus fortes que ma logique.',
+    accroche: "Je n'arrive plus à prendre de recul.",
     points: [
-      'Je ressens les choses beaucoup plus fort que la situation ne le justifie.',
-      'Une remarque anodine peut me toucher comme une vraie blessure.',
-      "La peur d'être rejeté ou mal compris est très présente en moi.",
-      'Ma colère ou ma tristesse arrivent vite et sont difficiles à contenir.',
-      "J'ai du mal à raisonner quand je suis dans cet état.",
-      'Mes émotions semblent plus fortes que moi.',
+      'Une émotion est arrivée très vite et très fort.',
+      `Une remarque, un conflit ou ${accorder("la peur d'être rejeté", "la peur d'être rejetée", 'la peur du rejet', genre)} me touche profondément.`,
+      "J'ai du mal à réfléchir tant que l'intensité ne redescend pas.",
     ],
-    cta: 'Que faire de ma tempête émotionnelle ?',
+    cta: "M'aider à traverser ce moment",
   },
   {
     key: 'alignement',
@@ -134,15 +128,21 @@ const EMOTIONS: EmotionData[] = [
     accroche: 'Je me sens fluide.',
     points: [
       "Mes pensées sont claires et je sais où j'en suis.",
-      'Je me sens motivé naturellement, sans avoir à me forcer.',
-      'Mes émotions sont stables et je me sens ancré.',
+      accorder(
+        'Je me sens motivé naturellement, sans avoir à me forcer.',
+        'Je me sens motivée naturellement, sans avoir à me forcer.',
+        'Ma motivation vient naturellement, sans avoir à me forcer.',
+        genre,
+      ),
+      `Mes émotions sont stables et ${accorder('je me sens ancré', 'je me sens ancrée', 'je ressens un bon ancrage', genre)}.`,
       "Mon énergie est fluide, je passe d'une chose à l'autre sans friction.",
       'Ma créativité fonctionne bien et les idées viennent facilement.',
-      'Je me sens capable de prioriser et d\'agir.',
+      "Je me sens capable de prioriser et d'agir.",
     ],
     cta: 'Profiter de mon alignement ?',
   },
-];
+  ];
+}
 
 // ─── Carousel dimensions ──────────────────────────────────────────────────────
 
@@ -171,9 +171,10 @@ type CarouselMeta = {
 
 type CarouselItem = EmotionData & CarouselMeta;
 
-const CAROUSEL_META: Record<string, CarouselMeta> = {
+function buildCarouselMeta(genre: string): Record<string, CarouselMeta> {
+  return {
   saturation: {
-    mainWord: 'saturé·e',
+    mainWord: accorder('saturé', 'saturée', 'en saturation', genre),
     gradient: ['#FEE8D0', '#F6C898', '#EEA868'],
     gStart: { x: 0.1, y: 0 }, gEnd: { x: 0.9, y: 1 },
     mirror: 'Tout arrive en même temps.',
@@ -187,12 +188,12 @@ const CAROUSEL_META: Record<string, CarouselMeta> = {
     ctaBg: 'rgba(255,255,255,0.30)', ctaBorder: 'rgba(255,255,255,0.55)', ctaText: '#4A2004',
   },
   paralysie: {
-    mainWord: 'paralysé·e',
+    mainWord: accorder('paralysé', 'paralysée', 'en paralysie', genre),
     gradient: ['#DDE9F6', '#C6D8EE', '#B0C8E2'],
     gStart: { x: 0.15, y: 0 }, gEnd: { x: 0.85, y: 1 },
     mirror: "Je sais quoi faire, mais je n'arrive pas à commencer.",
     signs: [
-      "Je reste bloqué·e devant des tâches pourtant simples.",
+      `Je reste ${accorder('bloqué', 'bloquée', 'en blocage', genre)} devant des tâches pourtant simples.`,
       "Chaque action me paraît demander un effort énorme.",
       "Je culpabilise de ne rien faire, mais ça ne me débloque pas.",
     ],
@@ -201,7 +202,7 @@ const CAROUSEL_META: Record<string, CarouselMeta> = {
     ctaBg: 'rgba(255,255,255,0.32)', ctaBorder: 'rgba(255,255,255,0.55)', ctaText: '#18304A',
   },
   anxieux: {
-    mainWord: 'anxieux·se',
+    mainWord: accorder('anxieux', 'anxieuse', 'en anxiété', genre),
     gradient: ['#EEE2F6', '#E0D0EE', '#D2BEE6'],
     gStart: { x: 0.05, y: 0 }, gEnd: { x: 0.95, y: 1 },
     mirror: 'Mes pensées partent trop vite.',
@@ -218,7 +219,7 @@ const CAROUSEL_META: Record<string, CarouselMeta> = {
     mainWord: 'en hyperfocus',
     gradient: ['#CCE8DC', '#B5D8C8', '#9DC8B2'],
     gStart: { x: 0.15, y: 0 }, gEnd: { x: 0.85, y: 1 },
-    mirror: 'Je suis totalement absorbé·e.',
+    mirror: accorder('Je suis totalement absorbé.', 'Je suis totalement absorbée.', 'Je suis en immersion totale.', genre),
     signs: [
       "Le temps passe sans que je m'en rende compte.",
       "Tout ce qui n'est pas ma tâche disparaît de mon radar.",
@@ -228,22 +229,22 @@ const CAROUSEL_META: Record<string, CarouselMeta> = {
     textDark: '#0C2A1E', textMid: 'rgba(12,42,30,0.72)', textPale: 'rgba(12,42,30,0.30)',
     ctaBg: 'rgba(255,255,255,0.30)', ctaBorder: 'rgba(255,255,255,0.52)', ctaText: '#164030',
   },
-  hyperstimulation: {
-    mainWord: 'hyperstimulé·e',
+  besoin_stimulation: {
+    mainWord: accorder('sous-stimulé', 'sous-stimulée', 'en sous-stimulation', genre),
     gradient: ['#FEF0C2', '#FAD888', '#F4C060'],
     gStart: { x: 0.1, y: 0 }, gEnd: { x: 0.9, y: 1 },
-    mirror: "J'ai besoin d'intensité maintenant.",
+    mirror: "J'ai besoin que quelque chose se passe.",
     signs: [
       "Je cherche quelque chose de nouveau ou stimulant.",
       "Je passe vite d'une idée, d'une envie ou d'une app à l'autre.",
-      "J'ai du mal à ralentir, même quand je suis déjà fatigué·e.",
+      "Je risque d'agir impulsivement pour sortir de cet état.",
     ],
-    ctaLabel: 'Que faire de mon hyperstimulation ?',
+    ctaLabel: "Trouver une stimulation qui m'aide",
     textDark: '#3A2004', textMid: 'rgba(58,32,4,0.72)', textPale: 'rgba(58,32,4,0.30)',
     ctaBg: 'rgba(255,255,255,0.32)', ctaBorder: 'rgba(255,255,255,0.60)', ctaText: '#4A2800',
   },
-  tempete: {
-    mainWord: 'en tempête',
+  submerge: {
+    mainWord: accorder('submergé', 'submergée', "sous l'eau", genre),
     gradient: ['#F6D5E2', '#EEC0D2', '#E4AABF'],
     gStart: { x: 0.1, y: 0 }, gEnd: { x: 0.9, y: 1 },
     mirror: 'Mes émotions prennent toute la place.',
@@ -252,15 +253,15 @@ const CAROUSEL_META: Record<string, CarouselMeta> = {
       "Je réagis plus fort que je ne voudrais.",
       "J'ai du mal à retrouver du recul sur ce que je ressens.",
     ],
-    ctaLabel: 'Explorer ma tempête émotionnelle',
+    ctaLabel: `Explorer ce que je vis ${accorder('submergé', 'submergée', "sous l'eau", genre)}`,
     textDark: '#380C18', textMid: 'rgba(56,12,24,0.72)', textPale: 'rgba(56,12,24,0.30)',
     ctaBg: 'rgba(255,255,255,0.30)', ctaBorder: 'rgba(255,255,255,0.52)', ctaText: '#4A1428',
   },
   alignement: {
-    mainWord: 'aligné·e',
+    mainWord: accorder('aligné', 'alignée', 'en alignement', genre),
     gradient: ['#DAE8D4', '#C4D8BA', '#AECAA0'],
     gStart: { x: 0.15, y: 0 }, gEnd: { x: 0.85, y: 1 },
-    mirror: 'Je me sens plus clair·e.',
+    mirror: accorder('Je me sens plus clair.', 'Je me sens plus claire.', "J'ai les idées plus claires.", genre),
     signs: [
       "J'arrive à choisir une chose sans me disperser.",
       "Mon énergie est plus stable et plus fluide.",
@@ -270,17 +271,22 @@ const CAROUSEL_META: Record<string, CarouselMeta> = {
     textDark: '#0E2410', textMid: 'rgba(14,36,16,0.72)', textPale: 'rgba(14,36,16,0.30)',
     ctaBg: 'rgba(255,255,255,0.32)', ctaBorder: 'rgba(255,255,255,0.55)', ctaText: '#1A3A1C',
   },
-};
+  };
+}
 
 const CAROUSEL_ORDER = [
   'saturation', 'paralysie', 'anxieux', 'hyperfocus',
-  'hyperstimulation', 'tempete', 'alignement',
+  'besoin_stimulation', 'submerge', 'alignement',
 ];
 
-const CAROUSEL_CARDS: CarouselItem[] = CAROUSEL_ORDER.map(key => ({
-  ...EMOTIONS.find(e => e.key === key)!,
-  ...CAROUSEL_META[key],
-}));
+function buildCarouselCards(genre: string): CarouselItem[] {
+  const emotions = buildEmotions(genre);
+  const meta = buildCarouselMeta(genre);
+  return CAROUSEL_ORDER.map(key => ({
+    ...emotions.find(e => e.key === key)!,
+    ...meta[key],
+  }));
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -351,13 +357,13 @@ function CarouselCard({ card, onCta }: { card: CarouselItem; onCta: () => void }
 
 // ─── DiscoveryCarousel ────────────────────────────────────────────────────────
 
-function DiscoveryCarousel({ onCta, onBack }: { onCta: (key: string) => void; onBack: () => void }) {
+function DiscoveryCarousel({ cards, onCta, onBack }: { cards: CarouselItem[]; onCta: (key: string) => void; onBack: () => void }) {
   const scrollRef = useRef<ScrollView>(null);
   const scrollX = useRef(new Animated.Value(0)).current;
   const [activeIdx, setActiveIdx] = useState(0);
 
   const goTo = (idx: number) => {
-    if (idx < 0 || idx >= CAROUSEL_CARDS.length) return;
+    if (idx < 0 || idx >= cards.length) return;
     scrollRef.current?.scrollTo({ x: idx * CARD_W, animated: true });
     setActiveIdx(idx);
   };
@@ -396,7 +402,7 @@ function DiscoveryCarousel({ onCta, onBack }: { onCta: (key: string) => void; on
             setActiveIdx(Math.round(e.nativeEvent.contentOffset.x / CARD_W));
           }}
           contentContainerStyle={{ paddingHorizontal: PEEK }}>
-          {CAROUSEL_CARDS.map((card, i) => {
+          {cards.map((card, i) => {
             const inputRange = [(i - 1) * CARD_W, i * CARD_W, (i + 1) * CARD_W];
             const scale = scrollX.interpolate({ inputRange, outputRange: [0.94, 1, 0.94], extrapolate: 'clamp' });
             const opacity = scrollX.interpolate({ inputRange, outputRange: [0.50, 1, 0.50], extrapolate: 'clamp' });
@@ -413,7 +419,7 @@ function DiscoveryCarousel({ onCta, onBack }: { onCta: (key: string) => void; on
 
       {/* ── Pagination ── */}
       <View style={cs.dotsRow}>
-        {CAROUSEL_CARDS.map((_, i) => (
+        {cards.map((_, i) => (
           <TouchableOpacity
             key={i}
             onPress={() => goTo(i)}
@@ -486,6 +492,19 @@ export default function CoachScreen() {
   const [openEmotion, setOpenEmotion] = useState<string | null>(null);
   const [showFlow, setShowFlow] = useState(false);
   const [showDiscovery, setShowDiscovery] = useState(false);
+  const [showNeutre, setShowNeutre] = useState(false);
+  const [genre, setGenre] = useState('');
+
+  useFocusEffect(
+    useCallback(() => {
+      AsyncStorage.getItem(PROFIL_KEY).then(profil => {
+        if (profil) setGenre(JSON.parse(profil).genre ?? '');
+      });
+    }, [])
+  );
+
+  const emotions = useMemo(() => buildEmotions(genre), [genre]);
+  const carouselCards = useMemo(() => buildCarouselCards(genre), [genre]);
 
   const handleTimeChoice = (choice: Exclude<TimeChoice, null>) => {
     setTimeChoice(choice);
@@ -512,21 +531,27 @@ export default function CoachScreen() {
           keyboardShouldPersistTaps="handled">
 
           {step === 1 && (
-            <View style={styles.stepWrap}>
-              <Text style={styles.stepQuestion}>{'Combien de temps avez-vous ?'}</Text>
-              <View style={styles.timeRow}>
-                <TouchableOpacity
-                  style={styles.timeBtn}
-                  onPress={() => handleTimeChoice('Mode Express')}
-                  activeOpacity={0.82}>
-                  <Text style={styles.timeBtnText}>{'Mode Express'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.timeBtn}
-                  onPress={() => handleTimeChoice('Mode Découverte')}
-                  activeOpacity={0.82}>
-                  <Text style={styles.timeBtnText}>{'Mode Découverte'}</Text>
-                </TouchableOpacity>
+            <View style={styles.step1Wrap}>
+              <View style={styles.step1Header}>
+                <Text style={styles.step1TagLine}>{'Consultez ici le Coach de'}</Text>
+                <Logo size="coach" />
+              </View>
+              <View style={styles.step1Content}>
+                <Text style={styles.stepQuestion}>{'Combien de temps avez-vous ?'}</Text>
+                <View style={styles.timeRow}>
+                  <TouchableOpacity
+                    style={styles.timeBtn}
+                    onPress={() => handleTimeChoice('Mode Express')}
+                    activeOpacity={0.82}>
+                    <Text style={styles.timeBtnText}>{'Mode Express'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.timeBtn}
+                    onPress={() => handleTimeChoice('Mode Découverte')}
+                    activeOpacity={0.82}>
+                    <Text style={styles.timeBtnText}>{'Mode Découverte'}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           )}
@@ -543,7 +568,7 @@ export default function CoachScreen() {
               <Text style={styles.stepQuestion}>{'Comment vous sentez-vous ?'}</Text>
               <Text style={styles.stepSub}>{'Mode Express'}</Text>
               <View style={styles.cardsWrap}>
-                {EMOTIONS.map(e => (
+                {emotions.filter(e => e.key !== 'alignement').map(e => (
                   <EmotionCard
                     key={e.key}
                     label={e.label}
@@ -555,6 +580,20 @@ export default function CoachScreen() {
                     onCta={() => handleCta(e.key)}
                   />
                 ))}
+                {/* Option de secours — pas de contenu dépliable */}
+                <View style={styles.card}>
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.cardLabel}>{'Je ne sais pas ce que je ressens'}</Text>
+                  </View>
+                  <View style={styles.expandPanel}>
+                    <TouchableOpacity
+                      style={styles.ctaBtn}
+                      onPress={() => setShowNeutre(true)}
+                      activeOpacity={0.82}>
+                      <Text style={styles.ctaBtnText}>{"Aide-moi sans avoir à choisir"}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
             </View>
           )}
@@ -564,6 +603,7 @@ export default function CoachScreen() {
       {/* ── Mode Découverte — carrousel ── */}
       {isDiscovery && (
         <DiscoveryCarousel
+          cards={carouselCards}
           onCta={handleCta}
           onBack={() => { setStep(1); setOpenEmotion(null); }}
         />
@@ -588,6 +628,10 @@ export default function CoachScreen() {
             setShowFlow(true);
           }}
         />
+      </Modal>
+
+      <Modal visible={showNeutre} animationType="slide" onRequestClose={() => setShowNeutre(false)}>
+        <ProtocoleNeutre onBack={() => setShowNeutre(false)} />
       </Modal>
     </SafeAreaView>
   );
@@ -808,6 +852,31 @@ const styles = StyleSheet.create({
   stepWrap: {
     flex: 1,
     alignItems: 'center',
+  },
+
+  // Step 1 — header + centred content
+  step1Wrap: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  step1Header: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  step1TagLine: {
+    fontFamily: 'Georgia',
+    fontStyle: 'italic',
+    fontSize: 18,
+    color: C.textSub,
+    textAlign: 'center',
+    marginBottom: 14,
+  },
+  step1Content: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    paddingBottom: 32,
   },
   stepQuestion: {
     fontSize: 22,

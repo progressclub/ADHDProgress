@@ -1,9 +1,30 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, DevSettings } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { PROFIL_KEY } from '@/components/Onboarding';
 
 export default function ProfilScreen() {
+  const handleDevReset = () => {
+    Alert.alert(
+      'Réinitialiser l\'onboarding ?',
+      'Cette action va effacer ton profil local et te renvoyer sur l\'écran d\'onboarding. Cette opération est réservée au développement.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Réinitialiser',
+          style: 'destructive',
+          onPress: async () => {
+            await AsyncStorage.removeItem(PROFIL_KEY);
+            DevSettings.reload();
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="dark" />
@@ -14,6 +35,15 @@ export default function ProfilScreen() {
         <View style={styles.badge}>
           <Text style={styles.badgeText}>Bientôt disponible</Text>
         </View>
+
+        {__DEV__ && (
+          <TouchableOpacity
+            style={styles.devBtn}
+            onPress={handleDevReset}
+            activeOpacity={0.75}>
+            <Text style={styles.devBtnText}>🔧 DEV — Réinitialiser l'onboarding</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -52,5 +82,20 @@ const styles = StyleSheet.create({
     color: '#7C6CF2',
     fontSize: 14,
     fontWeight: '600',
+  },
+  devBtn: {
+    marginTop: 40,
+    backgroundColor: '#FEF2E7',
+    borderColor: '#F59E0B',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  devBtnText: {
+    color: '#B45309',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
 });

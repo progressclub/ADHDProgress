@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import SaturationFlow from '@/components/SaturationFlow';
 import SaturationDiscovery from '@/components/SaturationDiscovery';
+import HyperfocusFlow from '@/components/HyperfocusFlow';
 import ProtocoleNeutre from '@/components/ProtocoleNeutre';
 import Logo from '@/components/Logo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -216,7 +217,7 @@ function buildCarouselMeta(genre: string): Record<string, CarouselMeta> {
     ctaBg: 'rgba(255,255,255,0.28)', ctaBorder: 'rgba(255,255,255,0.52)', ctaText: '#3C1858',
   },
   hyperfocus: {
-    mainWord: 'en hyperfocus',
+    mainWord: accorder('en hyperfocus', 'en hyperfocus', 'en immersion totale', genre),
     gradient: ['#CCE8DC', '#B5D8C8', '#9DC8B2'],
     gStart: { x: 0.15, y: 0 }, gEnd: { x: 0.85, y: 1 },
     mirror: accorder('Je suis totalement absorbé.', 'Je suis totalement absorbée.', 'Je suis en immersion totale.', genre),
@@ -247,7 +248,7 @@ function buildCarouselMeta(genre: string): Record<string, CarouselMeta> {
     mainWord: accorder('submergé', 'submergée', "sous l'eau", genre),
     gradient: ['#F6D5E2', '#EEC0D2', '#E4AABF'],
     gStart: { x: 0.1, y: 0 }, gEnd: { x: 0.9, y: 1 },
-    mirror: 'Mes émotions prennent toute la place.',
+    mirror: "Beaucoup d'émotions arrivent en même temps.",
     signs: [
       "Une émotion prend le dessus d'un coup.",
       "Je réagis plus fort que je ne voudrais.",
@@ -419,15 +420,28 @@ function DiscoveryCarousel({ cards, onCta, onBack }: { cards: CarouselItem[]; on
 
       {/* ── Pagination ── */}
       <View style={cs.dotsRow}>
-        {cards.map((_, i) => (
-          <TouchableOpacity
-            key={i}
-            onPress={() => goTo(i)}
-            hitSlop={{ top: 10, bottom: 10, left: 5, right: 5 }}
-            activeOpacity={0.6}>
-            <View style={[cs.dot, i === activeIdx && cs.dotActive]} />
-          </TouchableOpacity>
-        ))}
+        {cards.map((_, i) => {
+          const inputRange = [(i - 1) * CARD_W, i * CARD_W, (i + 1) * CARD_W];
+          const width = scrollX.interpolate({
+            inputRange,
+            outputRange: [7, 22, 7],
+            extrapolate: 'clamp',
+          });
+          const backgroundColor = scrollX.interpolate({
+            inputRange,
+            outputRange: ['#C4C0D8', '#7B61FF', '#C4C0D8'],
+            extrapolate: 'clamp',
+          });
+          return (
+            <TouchableOpacity
+              key={i}
+              onPress={() => goTo(i)}
+              hitSlop={{ top: 10, bottom: 10, left: 5, right: 5 }}
+              activeOpacity={0.6}>
+              <Animated.View style={[cs.dot, { width, backgroundColor }]} />
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
     </View>
@@ -492,6 +506,7 @@ export default function CoachScreen() {
   const [openEmotion, setOpenEmotion] = useState<string | null>(null);
   const [showFlow, setShowFlow] = useState(false);
   const [showDiscovery, setShowDiscovery] = useState(false);
+  const [showHyperfocus, setShowHyperfocus] = useState(false);
   const [showNeutre, setShowNeutre] = useState(false);
   const [genre, setGenre] = useState('');
 
@@ -515,6 +530,9 @@ export default function CoachScreen() {
     if (key === 'saturation' && timeChoice) {
       if (timeChoice === 'Mode Express') setShowFlow(true);
       else setShowDiscovery(true);
+    }
+    if (key === 'hyperfocus' && timeChoice === 'Mode Express') {
+      setShowHyperfocus(true);
     }
   };
 
@@ -627,6 +645,12 @@ export default function CoachScreen() {
             setTimeChoice('Mode Express');
             setShowFlow(true);
           }}
+        />
+      </Modal>
+
+      <Modal visible={showHyperfocus} animationType="slide" onRequestClose={() => setShowHyperfocus(false)}>
+        <HyperfocusFlow
+          onComplete={() => { setShowHyperfocus(false); setStep(1); setOpenEmotion(null); }}
         />
       </Modal>
 
@@ -820,16 +844,8 @@ const cs = StyleSheet.create({
     paddingBottom: 6,
   },
   dot: {
-    width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: '#C4C0D8',
-  },
-  dotActive: {
-    width: 22,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#7B61FF',
   },
 
 });

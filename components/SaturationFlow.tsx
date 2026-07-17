@@ -756,13 +756,33 @@ export default function SaturationFlow({ timeChoice, onComplete }: Props) {
   }, [fadeAnim, slideAnim]);
 
   const handleStep3NoWords = () => {
-    // TODO: chemin B — tri simplifié selon signal minimal
     if (step3NoWordsChoice) setStep3MinimalSignal(step3NoWordsChoice);
     setTriageLoading(true);
     setTriageError(null);
     setTriage(null);
     advanceTo(4);
-    setTriage({ urgent: [], pasMaintenant: [], aClarifier: [], emotion: [] });
+
+    const empty: TriageResult = { urgent: [], pasMaintenant: [], aClarifier: [], emotion: [] };
+    let result: TriageResult = empty;
+    switch (step3NoWordsChoice) {
+      case 'taches':
+        result = { ...empty, aClarifier: ['Plusieurs choses se mélangent, difficile de dire quoi faire en premier'] };
+        break;
+      case 'emotions':
+        result = { ...empty, emotion: ['Une vague émotionnelle forte, difficile à nommer'] };
+        break;
+      case 'bruit':
+        result = { ...empty, emotion: ['Trop de stimulation sensorielle ou mentale'] };
+        break;
+      case 'fatigue':
+        result = { ...empty, pasMaintenant: ["Fatigue qui empêche d'agir maintenant"] };
+        break;
+      case 'saispasdont':
+        result = { ...empty, aClarifier: ["Signal pas clair, besoin d'aide pour clarifier"] };
+        break;
+    }
+
+    setTriage(result);
     setTriageLoading(false);
   };
 

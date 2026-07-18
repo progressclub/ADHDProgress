@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import SaturationFlow from '@/components/SaturationFlow';
 import SaturationDiscovery from '@/components/SaturationDiscovery';
 import HyperfocusFlow from '@/components/HyperfocusFlow';
+import ParalyseFlow from '@/components/ParalyseFlow';
 import ProtocoleNeutre from '@/components/ProtocoleNeutre';
 import Logo from '@/components/Logo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -507,6 +508,7 @@ export default function CoachScreen() {
   const [showFlow, setShowFlow] = useState(false);
   const [showDiscovery, setShowDiscovery] = useState(false);
   const [showHyperfocus, setShowHyperfocus] = useState(false);
+  const [showParalyse, setShowParalyse] = useState(false);
   const [showNeutre, setShowNeutre] = useState(false);
   const [genre, setGenre] = useState('');
 
@@ -533,6 +535,9 @@ export default function CoachScreen() {
     }
     if (key === 'hyperfocus' && timeChoice === 'Mode Express') {
       setShowHyperfocus(true);
+    }
+    if (key === 'paralysie' && timeChoice === 'Mode Express') {
+      setShowParalyse(true);
     }
   };
 
@@ -651,6 +656,12 @@ export default function CoachScreen() {
       <Modal visible={showHyperfocus} animationType="slide" onRequestClose={() => setShowHyperfocus(false)}>
         <HyperfocusFlow
           onComplete={() => { setShowHyperfocus(false); setStep(1); setOpenEmotion(null); }}
+        />
+      </Modal>
+
+      <Modal visible={showParalyse} animationType="slide" onRequestClose={() => setShowParalyse(false)}>
+        <ParalyseFlow
+          onComplete={() => { setShowParalyse(false); setStep(1); setOpenEmotion(null); }}
         />
       </Modal>
 

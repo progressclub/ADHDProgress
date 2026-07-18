@@ -15,6 +15,7 @@ import SaturationFlow from '@/components/SaturationFlow';
 import SaturationDiscovery from '@/components/SaturationDiscovery';
 import HyperfocusFlow from '@/components/HyperfocusFlow';
 import ParalyseFlow from '@/components/ParalyseFlow';
+import AnxieuxFlow from '@/components/AnxieuxFlow';
 import ProtocoleNeutre from '@/components/ProtocoleNeutre';
 import Logo from '@/components/Logo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -509,6 +510,7 @@ export default function CoachScreen() {
   const [showDiscovery, setShowDiscovery] = useState(false);
   const [showHyperfocus, setShowHyperfocus] = useState(false);
   const [showParalyse, setShowParalyse] = useState(false);
+  const [showAnxieux, setShowAnxieux] = useState(false);
   const [showNeutre, setShowNeutre] = useState(false);
   const [genre, setGenre] = useState('');
 
@@ -538,6 +540,9 @@ export default function CoachScreen() {
     }
     if (key === 'paralysie' && timeChoice === 'Mode Express') {
       setShowParalyse(true);
+    }
+    if (key === 'anxieux' && timeChoice === 'Mode Express') {
+      setShowAnxieux(true);
     }
   };
 
@@ -662,6 +667,12 @@ export default function CoachScreen() {
       <Modal visible={showParalyse} animationType="slide" onRequestClose={() => setShowParalyse(false)}>
         <ParalyseFlow
           onComplete={() => { setShowParalyse(false); setStep(1); setOpenEmotion(null); }}
+        />
+      </Modal>
+
+      <Modal visible={showAnxieux} animationType="slide" onRequestClose={() => setShowAnxieux(false)}>
+        <AnxieuxFlow
+          onComplete={() => { setShowAnxieux(false); setStep(1); setOpenEmotion(null); }}
         />
       </Modal>
 

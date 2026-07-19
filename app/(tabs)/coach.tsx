@@ -16,6 +16,7 @@ import SaturationDiscovery from '@/components/SaturationDiscovery';
 import HyperfocusFlow from '@/components/HyperfocusFlow';
 import ParalyseFlow from '@/components/ParalyseFlow';
 import AnxieuxFlow from '@/components/AnxieuxFlow';
+import StimulationFlow from '@/components/StimulationFlow';
 import ProtocoleNeutre from '@/components/ProtocoleNeutre';
 import Logo from '@/components/Logo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -511,6 +512,7 @@ export default function CoachScreen() {
   const [showHyperfocus, setShowHyperfocus] = useState(false);
   const [showParalyse, setShowParalyse] = useState(false);
   const [showAnxieux, setShowAnxieux] = useState(false);
+  const [showStimulation, setShowStimulation] = useState(false);
   const [showNeutre, setShowNeutre] = useState(false);
   const [genre, setGenre] = useState('');
 
@@ -543,6 +545,9 @@ export default function CoachScreen() {
     }
     if (key === 'anxieux' && timeChoice === 'Mode Express') {
       setShowAnxieux(true);
+    }
+    if (key === 'besoin_stimulation' && timeChoice === 'Mode Express') {
+      setShowStimulation(true);
     }
   };
 
@@ -665,15 +670,29 @@ export default function CoachScreen() {
       </Modal>
 
       <Modal visible={showParalyse} animationType="slide" onRequestClose={() => setShowParalyse(false)}>
-        <ParalyseFlow
-          onComplete={() => { setShowParalyse(false); setStep(1); setOpenEmotion(null); }}
-        />
+        {showParalyse && (
+          <ParalyseFlow
+            onComplete={() => { setShowParalyse(false); setStep(1); setOpenEmotion(null); }}
+          />
+        )}
       </Modal>
 
       <Modal visible={showAnxieux} animationType="slide" onRequestClose={() => setShowAnxieux(false)}>
         <AnxieuxFlow
           onComplete={() => { setShowAnxieux(false); setStep(1); setOpenEmotion(null); }}
         />
+      </Modal>
+
+      <Modal visible={showStimulation} animationType="slide" onRequestClose={() => setShowStimulation(false)}>
+        {showStimulation && (
+          <StimulationFlow
+            onComplete={() => { setShowStimulation(false); setStep(1); setOpenEmotion(null); }}
+            onRedirectToParalyse={() => {
+              setShowStimulation(false);
+              setShowParalyse(true);
+            }}
+          />
+        )}
       </Modal>
 
       <Modal visible={showNeutre} animationType="slide" onRequestClose={() => setShowNeutre(false)}>
